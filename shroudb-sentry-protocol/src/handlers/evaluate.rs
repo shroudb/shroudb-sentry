@@ -1,6 +1,8 @@
+use shroudb_sentry_core::decision::SignedDecision;
 use shroudb_sentry_core::evaluation::EvaluationRequest;
 use shroudb_sentry_core::policy::{Effect, PolicySet};
 
+use crate::decision_cache::DecisionCache;
 use crate::error::CommandError;
 use crate::response::{ResponseMap, ResponseValue};
 use crate::signing_index::SigningIndex;
@@ -10,11 +12,19 @@ pub fn handle_evaluate(
     signing_index: &SigningIndex,
     json: &str,
     default_decision: Effect,
+    cache: Option<&DecisionCache>,
 ) -> Result<ResponseMap, CommandError> {
     let request: EvaluationRequest =
         serde_json::from_str(json).map_err(|e| CommandError::BadArg {
             message: format!("invalid evaluation request JSON: {e}"),
         })?;
+
+    // Check cache first.
+    if let Some(cache) = cache
+        && let Some(cached) = cache.get(&request)
+    {
+        return Ok(signed_to_response(cached));
+    }
 
     let decision = policy_set.evaluate(&request, default_decision);
 
@@ -22,6 +32,15 @@ pub fn handle_evaluate(
         .sign_decision(&decision, &request)
         .map_err(|e| CommandError::Internal(e.to_string()))?;
 
+    // Store in cache.
+    if let Some(cache) = cache {
+        cache.put(&request, &signed);
+    }
+
+    Ok(signed_to_response(signed))
+}
+
+fn signed_to_response(signed: SignedDecision) -> ResponseMap {
     let mut resp = ResponseMap::ok()
         .with(
             "decision",
@@ -38,5 +57,5 @@ pub fn handle_evaluate(
         ResponseValue::Integer(signed.cache_until as i64),
     );
 
-    Ok(resp)
+    resp
 }

@@ -129,6 +129,17 @@ impl PolicySet {
     /// 4. Otherwise, use the highest-priority match.
     /// 5. If no policy matches, use the default decision.
     pub fn evaluate(&self, request: &EvaluationRequest, default_decision: Effect) -> Decision {
+        let now_minutes = crate::matcher::current_utc_minutes();
+        self.evaluate_at(request, default_decision, now_minutes)
+    }
+
+    /// Evaluate with a specific time (for testing).
+    pub fn evaluate_at(
+        &self,
+        request: &EvaluationRequest,
+        default_decision: Effect,
+        now_utc_minutes: u32,
+    ) -> Decision {
         let mut best_match: Option<&Policy> = None;
 
         for policy in &self.policies {
@@ -140,6 +151,13 @@ impl PolicySet {
                 continue;
             }
             if !policy.action.matches(&request.action) {
+                continue;
+            }
+
+            // Check conditions (time window, etc.).
+            if let Some(ref conditions) = policy.conditions
+                && !conditions.evaluate(now_utc_minutes)
+            {
                 continue;
             }
 

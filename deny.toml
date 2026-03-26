@@ -7,6 +7,9 @@ ignore = [
     # atomic-polyfill unmaintained — transitive dep from postcard → heapless 0.7.
     # No fix available without switching serializers. postcard 1.x is the latest.
     "RUSTSEC-2023-0089",
+    # instant unmaintained — transitive dep from notify 7.x → notify-types.
+    # No fix available; web-time is recommended replacement but notify hasn't migrated.
+    "RUSTSEC-2024-0384",
 ]
 
 [licenses]
@@ -23,6 +26,7 @@ allow = [
     "Zlib",
     "BSL-1.0",
     "MPL-2.0",
+    "CC0-1.0",
     "CDLA-Permissive-2.0",
 ]
 confidence-threshold = 0.8

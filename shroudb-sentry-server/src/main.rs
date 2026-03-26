@@ -7,6 +7,7 @@ mod connection;
 mod http;
 mod server;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use clap::Parser;
@@ -85,21 +86,27 @@ async fn main() -> anyhow::Result<()> {
         "policies loaded"
     );
 
-    if cfg.evaluation.cache_enabled {
-        tracing::info!(
-            cache_ttl = cfg.evaluation.cache_ttl_secs,
-            max_batch = cfg.evaluation.max_batch_size,
-            "evaluation caching enabled (not yet implemented)"
-        );
-    }
-
     // 7. Create signing keyring.
     tracing::info!(mode = %cfg.signing.mode, algorithm = %cfg.signing.algorithm, "signing config");
-    let algorithm = config::parse_algorithm(&cfg.signing.algorithm)?;
+    let signing_algorithm = config::parse_algorithm(&cfg.signing.algorithm)?;
+    let jwt_algorithm = match signing_algorithm {
+        shroudb_sentry_core::signing::SigningAlgorithm::Jwt(alg) => alg,
+        shroudb_sentry_core::signing::SigningAlgorithm::HmacSha256 => {
+            // HMAC mode: use ES256 as a placeholder algorithm for the keyring struct,
+            // but actual signing will use HMAC-SHA256 via the signing mode.
+            shroudb_crypto::JwtAlgorithm::ES256
+        }
+    };
+    let signing_mode = match signing_algorithm {
+        shroudb_sentry_core::signing::SigningAlgorithm::HmacSha256 => {
+            shroudb_sentry_core::signing::SigningMode::Hmac
+        }
+        _ => shroudb_sentry_core::signing::SigningMode::Jwt,
+    };
     let keyring_name = "sentry-signing".to_string();
     let keyring = SigningKeyring {
         name: keyring_name.clone(),
-        algorithm,
+        algorithm: jwt_algorithm,
         rotation_days: cfg.signing.rotation_days,
         drain_days: cfg.signing.drain_days,
         decision_ttl_secs: cfg.signing.decision_ttl_secs,
@@ -107,6 +114,7 @@ async fn main() -> anyhow::Result<()> {
     };
     let signing_index = Arc::new(shroudb_sentry_protocol::signing_index::SigningIndex::new(
         keyring,
+        signing_mode,
     ));
 
     // 8. WAL replay for signing keys.
@@ -133,13 +141,24 @@ async fn main() -> anyhow::Result<()> {
     let auth_registry = Arc::new(config::build_auth_registry(&cfg));
 
     // 11. Create Sentry dispatcher.
-    let dispatcher = Arc::new(shroudb_sentry_protocol::CommandDispatcher::new(
+    let policies_dir = cfg.policies.dir.clone();
+    let mut dispatcher = shroudb_sentry_protocol::CommandDispatcher::new(
         Arc::clone(&engine),
         Arc::clone(&policy_set),
         Arc::clone(&signing_index),
         Arc::clone(&auth_registry),
         default_decision,
-    ));
+        policies_dir.clone(),
+    );
+    if cfg.evaluation.cache_enabled {
+        dispatcher = dispatcher.with_decision_cache(cfg.evaluation.cache_ttl_secs);
+        tracing::info!(
+            cache_ttl = cfg.evaluation.cache_ttl_secs,
+            max_batch = cfg.evaluation.max_batch_size,
+            "evaluation caching enabled"
+        );
+    }
+    let dispatcher = Arc::new(dispatcher);
 
     // 12. Install Prometheus metrics recorder.
     let metrics_handle = metrics_exporter_prometheus::PrometheusBuilder::new()
@@ -165,16 +184,31 @@ async fn main() -> anyhow::Result<()> {
     }
     tracing::info!("background scheduler started");
 
+    // 14b. Start file watcher for hot policy reload.
+    if cfg.policies.watch {
+        let watch_disp = Arc::clone(&dispatcher);
+        let watch_dir = policies_dir.clone();
+        let watch_rx = shutdown_rx.clone();
+        tokio::spawn(async move {
+            run_policy_watcher(watch_dir, watch_disp, watch_rx).await;
+        });
+        tracing::info!(dir = %policies_dir.display(), "policy file watcher started");
+    }
+
     // 15. Start HTTP API server.
     {
-        let http_ps = Arc::clone(&policy_set);
-        let http_si = Arc::clone(&signing_index);
+        let http_config = http::HttpConfig {
+            bind: cfg.server.http_bind,
+            policy_set: Arc::clone(&policy_set),
+            signing_index: Arc::clone(&signing_index),
+            default_decision,
+            max_batch_size: cfg.evaluation.max_batch_size,
+            auth_registry: Arc::clone(&auth_registry),
+            cors_origins: cfg.server.cors_origins.clone(),
+        };
         let http_rx = shutdown_rx.clone();
-        let http_bind = cfg.server.http_bind;
         tokio::spawn(async move {
-            if let Err(e) =
-                http::run_http_server(http_bind, http_ps, http_si, default_decision, http_rx).await
-            {
+            if let Err(e) = http::run_http_server(http_config, http_rx).await {
                 tracing::error!(error = %e, "HTTP server failed");
             }
         });
@@ -272,6 +306,68 @@ fn resolve_log_filter() -> tracing_subscriber::EnvFilter {
     }
     tracing_subscriber::EnvFilter::try_from_default_env()
         .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"))
+}
+
+async fn run_policy_watcher(
+    dir: PathBuf,
+    dispatcher: Arc<shroudb_sentry_protocol::CommandDispatcher>,
+    mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+) {
+    use notify::{RecursiveMode, Watcher};
+
+    let (tx, mut rx) = tokio::sync::mpsc::channel(16);
+
+    let mut watcher =
+        match notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+            if let Ok(event) = res {
+                // Only trigger on .toml file changes.
+                let has_toml = event
+                    .paths
+                    .iter()
+                    .any(|p| p.extension().is_some_and(|ext| ext == "toml"));
+                if has_toml {
+                    let _ = tx.blocking_send(());
+                }
+            }
+        }) {
+            Ok(w) => w,
+            Err(e) => {
+                tracing::error!(error = %e, "failed to create file watcher");
+                return;
+            }
+        };
+
+    if let Err(e) = watcher.watch(&dir, RecursiveMode::NonRecursive) {
+        tracing::error!(error = %e, dir = %dir.display(), "failed to watch policies directory");
+        return;
+    }
+
+    let debounce = tokio::time::Duration::from_secs(1);
+    loop {
+        tokio::select! {
+            _ = shutdown_rx.changed() => {
+                if *shutdown_rx.borrow() {
+                    break;
+                }
+            }
+            Some(()) = rx.recv() => {
+                // Debounce: drain any events that arrive within 1 second.
+                tokio::time::sleep(debounce).await;
+                while rx.try_recv().is_ok() {}
+
+                match dispatcher.reload_policies() {
+                    Ok(count) => {
+                        tracing::info!(count, "policies hot-reloaded by file watcher");
+                    }
+                    Err(e) => {
+                        tracing::error!(error = %e, "policy hot-reload failed");
+                    }
+                }
+            }
+        }
+    }
+
+    drop(watcher);
 }
 
 async fn shutdown_signal() {

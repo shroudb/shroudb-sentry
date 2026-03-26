@@ -6,10 +6,12 @@
 pub mod auth;
 pub mod command;
 pub mod command_parser;
+pub mod decision_cache;
 pub mod dispatch;
 pub mod error;
 pub mod handlers;
 pub mod recovery;
+pub mod remote_signer;
 pub mod resp3;
 pub mod response;
 pub mod scheduler;

@@ -5,7 +5,14 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 
+[[bin]]
+name = "shroudb-sentry-cli"
+path = "src/main.rs"
+
 [dependencies]
 shroudb-sentry-client = { path = "../shroudb-sentry-client" }
+clap.workspace = true
 tokio.workspace = true
+anyhow.workspace = true
+rustyline.workspace = true
 serde_json.workspace = true

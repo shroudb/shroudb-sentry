@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
@@ -8,6 +9,7 @@ use shroudb_sentry_core::policy::{Effect, PolicySet};
 
 use crate::auth::{AuthPolicy, AuthRegistry};
 use crate::command::{Command, command_verb};
+use crate::decision_cache::DecisionCache;
 use crate::error::CommandError;
 use crate::handlers;
 use crate::response::{CommandResponse, ResponseMap, ResponseValue};
@@ -20,6 +22,8 @@ pub struct CommandDispatcher {
     signing_index: Arc<SigningIndex>,
     auth_registry: Arc<AuthRegistry>,
     default_decision: Effect,
+    policies_dir: PathBuf,
+    decision_cache: Option<Arc<DecisionCache>>,
 }
 
 impl CommandDispatcher {
@@ -29,6 +33,7 @@ impl CommandDispatcher {
         signing_index: Arc<SigningIndex>,
         auth_registry: Arc<AuthRegistry>,
         default_decision: Effect,
+        policies_dir: PathBuf,
     ) -> Self {
         Self {
             engine,
@@ -36,7 +41,19 @@ impl CommandDispatcher {
             signing_index,
             auth_registry,
             default_decision,
+            policies_dir,
+            decision_cache: None,
         }
+    }
+
+    /// Enable the decision cache with the given TTL.
+    pub fn with_decision_cache(mut self, ttl_secs: u64) -> Self {
+        self.decision_cache = Some(Arc::new(DecisionCache::new(ttl_secs)));
+        self
+    }
+
+    pub fn decision_cache(&self) -> Option<&DecisionCache> {
+        self.decision_cache.as_deref()
     }
 
     pub fn auth_registry(&self) -> &AuthRegistry {
@@ -53,6 +70,24 @@ impl CommandDispatcher {
 
     pub fn signing_index(&self) -> &SigningIndex {
         &self.signing_index
+    }
+
+    pub fn policies_dir(&self) -> &std::path::Path {
+        &self.policies_dir
+    }
+
+    /// Reload policies from disk and return the count of loaded policies.
+    pub fn reload_policies(&self) -> Result<usize, CommandError> {
+        let new_set = PolicySet::load_dir(&self.policies_dir)?;
+        let count = new_set.policies().len();
+        let mut ps = self.policy_set.write().expect("policy set lock poisoned");
+        *ps = new_set;
+        // Invalidate the decision cache since policies changed.
+        if let Some(ref cache) = self.decision_cache {
+            cache.invalidate_all();
+        }
+        tracing::info!(count, dir = %self.policies_dir.display(), "policies reloaded");
+        Ok(count)
     }
 
     pub async fn execute(&self, cmd: Command, auth: Option<&AuthPolicy>) -> CommandResponse {
@@ -129,8 +164,8 @@ impl CommandDispatcher {
     async fn dispatch(&self, cmd: Command) -> Result<ResponseMap, CommandError> {
         match cmd {
             Command::PolicyReload => {
-                // Reloading from disk is done at the server layer; this just confirms.
-                Ok(ResponseMap::ok())
+                let count = self.reload_policies()?;
+                Ok(ResponseMap::ok().with("policies_loaded", ResponseValue::Integer(count as i64)))
             }
 
             Command::PolicyList => {
@@ -143,15 +178,19 @@ impl CommandDispatcher {
                 handlers::policy_info::handle_policy_info(&ps, &name)
             }
 
-            Command::KeyRotate {
-                force: _,
-                dryrun: _,
-            } => {
-                // Key rotation is handled by the server layer / scheduler.
-                Ok(ResponseMap::ok().with(
-                    "message",
-                    ResponseValue::String("key rotation scheduled".into()),
-                ))
+            Command::KeyRotate { force, dryrun } => {
+                let keyring_name = {
+                    let kr = self.signing_index.read();
+                    kr.name.clone()
+                };
+                handlers::key_rotate::handle_key_rotate(
+                    &self.engine,
+                    &self.signing_index,
+                    &keyring_name,
+                    force,
+                    dryrun,
+                )
+                .await
             }
 
             Command::KeyInfo => handlers::key_info::handle_key_info(&self.signing_index),
@@ -163,6 +202,7 @@ impl CommandDispatcher {
                     &self.signing_index,
                     &json,
                     self.default_decision,
+                    self.decision_cache.as_deref(),
                 )
             }
 

@@ -35,6 +35,8 @@ pub struct ServerConfig {
     pub tls_key: Option<PathBuf>,
     pub tls_client_ca: Option<PathBuf>,
     pub rate_limit: Option<u32>,
+    #[serde(default)]
+    pub cors_origins: Option<Vec<String>>,
 }
 
 impl Default for ServerConfig {
@@ -46,6 +48,7 @@ impl Default for ServerConfig {
             tls_key: None,
             tls_client_ca: None,
             rate_limit: None,
+            cors_origins: None,
         }
     }
 }
@@ -281,15 +284,17 @@ pub fn to_engine_config(cfg: &SentryConfig) -> StorageEngineConfig {
     }
 }
 
-/// Parse JwtAlgorithm from config string.
-pub fn parse_algorithm(s: &str) -> anyhow::Result<shroudb_crypto::JwtAlgorithm> {
+/// Parse signing algorithm from config string.
+pub fn parse_algorithm(s: &str) -> anyhow::Result<shroudb_sentry_core::signing::SigningAlgorithm> {
+    use shroudb_sentry_core::signing::SigningAlgorithm;
     match s.to_uppercase().as_str() {
-        "ES256" => Ok(shroudb_crypto::JwtAlgorithm::ES256),
-        "ES384" => Ok(shroudb_crypto::JwtAlgorithm::ES384),
-        "RS256" => Ok(shroudb_crypto::JwtAlgorithm::RS256),
-        "RS384" => Ok(shroudb_crypto::JwtAlgorithm::RS384),
-        "RS512" => Ok(shroudb_crypto::JwtAlgorithm::RS512),
-        "EDDSA" | "ED25519" => Ok(shroudb_crypto::JwtAlgorithm::EdDSA),
+        "ES256" => Ok(SigningAlgorithm::Jwt(shroudb_crypto::JwtAlgorithm::ES256)),
+        "ES384" => Ok(SigningAlgorithm::Jwt(shroudb_crypto::JwtAlgorithm::ES384)),
+        "RS256" => Ok(SigningAlgorithm::Jwt(shroudb_crypto::JwtAlgorithm::RS256)),
+        "RS384" => Ok(SigningAlgorithm::Jwt(shroudb_crypto::JwtAlgorithm::RS384)),
+        "RS512" => Ok(SigningAlgorithm::Jwt(shroudb_crypto::JwtAlgorithm::RS512)),
+        "EDDSA" | "ED25519" => Ok(SigningAlgorithm::Jwt(shroudb_crypto::JwtAlgorithm::EdDSA)),
+        "HMAC-SHA256" | "HMAC_SHA256" | "HS256" => Ok(SigningAlgorithm::HmacSha256),
         _ => anyhow::bail!("unsupported signing algorithm: {s}"),
     }
 }

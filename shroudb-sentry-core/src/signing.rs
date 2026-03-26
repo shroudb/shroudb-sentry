@@ -5,6 +5,26 @@ use crate::error::SentryError;
 use crate::evaluation::EvaluationRequest;
 use crate::key_state::KeyState;
 
+/// Signing algorithm that includes both JWT and HMAC modes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SigningAlgorithm {
+    Jwt(shroudb_crypto::JwtAlgorithm),
+    HmacSha256,
+}
+
+/// Trait for signing decisions. Allows embedded (local) and remote signers.
+pub trait DecisionSigner: Send + Sync {
+    fn sign(
+        &self,
+        decision: &Decision,
+        request: &EvaluationRequest,
+        now: u64,
+        ttl_secs: u64,
+    ) -> Result<SignedDecision, SentryError>;
+
+    fn jwks(&self) -> Result<serde_json::Value, SentryError>;
+}
+
 /// A single version of a signing key in the keyring.
 pub struct SigningKeyVersion {
     pub version: u32,
@@ -115,6 +135,117 @@ impl SigningKeyring {
             keys.push(jwk);
         }
         Ok(serde_json::json!({ "keys": keys }))
+    }
+}
+
+/// Whether this keyring uses HMAC signing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SigningMode {
+    Jwt,
+    Hmac,
+}
+
+impl SigningKeyring {
+    /// Sign a decision using HMAC-SHA256.
+    ///
+    /// Format: `base64(claims_json).base64(hmac_signature)`
+    pub fn sign_decision_hmac(
+        &self,
+        decision: &Decision,
+        request: &EvaluationRequest,
+        now: u64,
+    ) -> Result<SignedDecision, SentryError> {
+        let active = self.active_key().ok_or(SentryError::NoActiveKey)?;
+        let private_key = active
+            .private_key
+            .as_ref()
+            .ok_or(SentryError::NoActiveKey)?;
+
+        let exp = now + self.decision_ttl_secs;
+
+        let claims = SignedDecisionClaims {
+            decision: decision.effect.to_string(),
+            principal: request.principal.id.clone(),
+            resource: request.resource.id.clone(),
+            action: request.action.clone(),
+            policy: decision.matched_policy.clone(),
+            iat: now,
+            exp,
+        };
+
+        let claims_json =
+            serde_json::to_vec(&claims).map_err(|e| SentryError::SigningError(e.to_string()))?;
+
+        use base64::Engine;
+        let engine = base64::engine::general_purpose::URL_SAFE_NO_PAD;
+        let claims_b64 = engine.encode(&claims_json);
+
+        let sig = shroudb_crypto::hmac_sign(
+            shroudb_crypto::HmacAlgorithm::Sha256,
+            private_key.as_bytes(),
+            claims_b64.as_bytes(),
+        )
+        .map_err(|e| SentryError::SigningError(e.to_string()))?;
+
+        let sig_b64 = engine.encode(&sig);
+        let token = format!("{claims_b64}.{sig_b64}");
+
+        Ok(SignedDecision {
+            decision: decision.effect,
+            token,
+            matched_policy: decision.matched_policy.clone(),
+            cache_until: exp,
+        })
+    }
+}
+
+/// EmbeddedSigner wraps a SigningKeyring behind a RwLock and implements DecisionSigner.
+pub struct EmbeddedSigner {
+    keyring: std::sync::RwLock<SigningKeyring>,
+    mode: SigningMode,
+}
+
+impl EmbeddedSigner {
+    pub fn new(keyring: SigningKeyring, mode: SigningMode) -> Self {
+        Self {
+            keyring: std::sync::RwLock::new(keyring),
+            mode,
+        }
+    }
+
+    pub fn read(&self) -> std::sync::RwLockReadGuard<'_, SigningKeyring> {
+        self.keyring.read().expect("signing keyring lock poisoned")
+    }
+
+    pub fn write(&self) -> std::sync::RwLockWriteGuard<'_, SigningKeyring> {
+        self.keyring.write().expect("signing keyring lock poisoned")
+    }
+}
+
+impl DecisionSigner for EmbeddedSigner {
+    fn sign(
+        &self,
+        decision: &Decision,
+        request: &EvaluationRequest,
+        now: u64,
+        _ttl_secs: u64,
+    ) -> Result<SignedDecision, SentryError> {
+        let kr = self.read();
+        match self.mode {
+            SigningMode::Hmac => kr.sign_decision_hmac(decision, request, now),
+            SigningMode::Jwt => kr.sign_decision(decision, request, now),
+        }
+    }
+
+    fn jwks(&self) -> Result<serde_json::Value, SentryError> {
+        let kr = self.read();
+        match self.mode {
+            SigningMode::Hmac => {
+                // HMAC mode has no public keys to expose.
+                Ok(serde_json::json!({ "keys": [] }))
+            }
+            SigningMode::Jwt => kr.jwks(),
+        }
     }
 }
 
