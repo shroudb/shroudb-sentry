@@ -2,7 +2,6 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
-use metrics::{counter, histogram};
 use shroudb_storage::{HealthState, StorageEngine};
 
 use shroudb_sentry_core::policy::{Effect, PolicySet};
@@ -141,13 +140,6 @@ impl CommandDispatcher {
             Ok(_) => "ok",
             Err(_) => "error",
         };
-
-        counter!("sentry_commands_total", "command" => verb, "result" => result_label).increment(1);
-        histogram!("sentry_command_duration_seconds", "command" => verb)
-            .record(duration.as_secs_f64());
-
-        let behavior = if is_read { "read" } else { "write" };
-        counter!("sentry_commands_by_behavior_total", "behavior" => behavior).increment(1);
 
         // Audit log for write operations.
         if !is_read {

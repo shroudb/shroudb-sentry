@@ -2178,7 +2178,6 @@ dependencies = [
  "base64",
  "dashmap",
  "hex",
- "metrics",
  "serde",
  "serde_json",
  "shroudb-crypto",

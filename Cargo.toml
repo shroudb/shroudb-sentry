@@ -46,7 +46,6 @@ tokio-rustls = "0.26"
 # Observability
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
-metrics = "0.24"
 
 # Utilities
 thiserror = "2"
