@@ -59,7 +59,7 @@ version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "40c48f72fd53cd289104fc64099abca73db4166ad86ea0b4341abe65af83dadc"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -70,7 +70,7 @@ checksum = "291e6a250ff86cd4a820112fb8898808a366d8f9f58ce16d1f538353ad55747d"
 dependencies = [
  "anstyle",
  "once_cell_polyfill",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -613,7 +613,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1321,7 +1321,7 @@ version = "0.50.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7957b9740744892f114936ab4a57b3f487491bbeafaf8083688b16841a4240e5"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -1823,7 +1823,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2098,7 +2098,7 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 [[package]]
 name = "shroudb-core"
 version = "0.1.0"
-source = "git+https://github.com/shroudb/commons.git?tag=v0.6.0#1f996c31269c0ae33a468a1f59c1321f6fc8529a"
+source = "git+https://github.com/shroudb/commons.git?tag=v0.8.0#78acaa3768d13dc7c18c2c4baf094c1904307fd3"
 dependencies = [
  "serde",
  "serde_json",
@@ -2110,7 +2110,7 @@ dependencies = [
 [[package]]
 name = "shroudb-crypto"
 version = "0.1.0"
-source = "git+https://github.com/shroudb/commons.git?tag=v0.6.0#1f996c31269c0ae33a468a1f59c1321f6fc8529a"
+source = "git+https://github.com/shroudb/commons.git?tag=v0.8.0#78acaa3768d13dc7c18c2c4baf094c1904307fd3"
 dependencies = [
  "argon2",
  "base62",
@@ -2220,7 +2220,7 @@ dependencies = [
 [[package]]
 name = "shroudb-storage"
 version = "0.1.0"
-source = "git+https://github.com/shroudb/commons.git?tag=v0.6.0#1f996c31269c0ae33a468a1f59c1321f6fc8529a"
+source = "git+https://github.com/shroudb/commons.git?tag=v0.8.0#78acaa3768d13dc7c18c2c4baf094c1904307fd3"
 dependencies = [
  "crc32fast",
  "dashmap",
@@ -2240,7 +2240,7 @@ dependencies = [
 [[package]]
 name = "shroudb-telemetry"
 version = "0.1.0"
-source = "git+https://github.com/shroudb/commons.git?tag=v0.6.0#1f996c31269c0ae33a468a1f59c1321f6fc8529a"
+source = "git+https://github.com/shroudb/commons.git?tag=v0.8.0#78acaa3768d13dc7c18c2c4baf094c1904307fd3"
 dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
@@ -2313,7 +2313,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a766e1110788c36f4fa1c2b71b387a7815aa65f88ce0229841826633d93723e"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2380,7 +2380,7 @@ dependencies = [
  "getrandom 0.4.2",
  "once_cell",
  "rustix",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2944,7 +2944,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]

@@ -117,23 +117,31 @@ async fn main() -> anyhow::Result<()> {
         signing_mode,
     ));
 
-    // 8. WAL replay for signing keys.
-    let replayed = shroudb_sentry_protocol::recovery::replay_sentry_wal(
-        &engine,
-        &signing_index,
-        &keyring_name,
-    )
-    .await?;
+    // 8. Register Sentry engine handler and replay WAL entries.
+    let handler = Box::new(
+        shroudb_sentry_protocol::engine_handler::SentryEngineHandler::new(
+            Arc::clone(&engine),
+            Arc::clone(&signing_index),
+            keyring_name.clone(),
+        ),
+    );
+    engine.register_handler(handler);
+    let replayed = engine.replay_handlers().await?;
     if replayed > 0 {
         tracing::info!(entries = replayed, "sentry WAL replay complete");
     }
 
     // 9. Seed initial signing key if needed.
-    let seeded =
-        shroudb_sentry_protocol::recovery::seed_signing_key(&engine, &signing_index, &keyring_name)
-            .await?;
-    if seeded {
-        tracing::info!("seeded initial signing key");
+    if !matches!(*engine.role(), shroudb_storage::NodeRole::Replica { .. }) {
+        let seeded = shroudb_sentry_protocol::recovery::seed_signing_key(
+            &engine,
+            &signing_index,
+            &keyring_name,
+        )
+        .await?;
+        if seeded {
+            tracing::info!("seeded initial signing key");
+        }
     }
     tracing::info!("signing keyring ready");
 
@@ -166,6 +174,9 @@ async fn main() -> anyhow::Result<()> {
         shutdown_signal().await;
         let _ = shutdown_tx.send(true);
     });
+
+    // 12b. Start replication (primary/replica/standalone).
+    engine.start_replication(shutdown_rx.clone()).await?;
 
     // 14. Start key lifecycle scheduler (drain→retire, auto-rotation).
     {

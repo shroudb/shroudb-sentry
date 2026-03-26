@@ -18,6 +18,8 @@ pub struct SentryConfig {
     #[serde(default)]
     pub auth: AuthConfig,
     #[serde(default)]
+    pub replication: ReplicationConfig,
+    #[serde(default)]
     pub signing: SigningConfig,
     #[serde(default)]
     pub policies: PoliciesConfig,
@@ -230,6 +232,37 @@ fn default_max_batch_size() -> usize {
     100
 }
 
+#[derive(Debug, Default, Deserialize)]
+pub struct ReplicationConfig {
+    #[serde(default = "default_replication_role")]
+    pub role: String,
+    pub bind: Option<String>,
+    pub primary: Option<String>,
+    pub staleness_budget_ms: Option<u64>,
+    pub max_buffer_entries: Option<usize>,
+}
+
+fn default_replication_role() -> String {
+    "standalone".into()
+}
+
+/// Convert replication config to NodeRole.
+pub fn to_node_role(cfg: &ReplicationConfig) -> shroudb_storage::NodeRole {
+    match cfg.role.to_lowercase().as_str() {
+        "primary" => shroudb_storage::NodeRole::Primary {
+            bind_addr: cfg.bind.clone().unwrap_or_else(|| "0.0.0.0:9100".into()),
+        },
+        "replica" => shroudb_storage::NodeRole::Replica {
+            primary_addr: cfg
+                .primary
+                .clone()
+                .unwrap_or_else(|| "127.0.0.1:9100".into()),
+            staleness_budget_ms: cfg.staleness_budget_ms,
+        },
+        _ => shroudb_storage::NodeRole::Standalone,
+    }
+}
+
 /// Load and parse config file with env var interpolation.
 pub fn load(path: &Path) -> anyhow::Result<Option<SentryConfig>> {
     if !path.exists() {
@@ -277,6 +310,8 @@ pub fn to_engine_config(cfg: &SentryConfig) -> StorageEngineConfig {
         max_segment_bytes: cfg.storage.wal_segment_max_bytes,
         snapshot_entry_threshold: cfg.storage.snapshot_interval_entries,
         snapshot_time_threshold_secs: cfg.storage.snapshot_interval_minutes * 60,
+        role: to_node_role(&cfg.replication),
+        broadcast_capacity: cfg.replication.max_buffer_entries.unwrap_or(10_000),
         ..Default::default()
     }
 }

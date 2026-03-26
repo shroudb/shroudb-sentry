@@ -15,7 +15,7 @@ export SHROUDB_MASTER_KEY="base64-encoded-32-byte-key"
 cargo run -- --config sentry.toml
 ```
 
-Default port: `6799` (RESP3), `6800` (HTTP).
+Default port: `6799` (TCP), `6800` (HTTP).
 
 ## Installation
 
@@ -99,7 +99,7 @@ docker run --rm -it shroudb/sentry-cli --host <sentry-host> --port 6799
 - **Decision caching** -- configurable TTL to avoid re-evaluating identical requests.
 - **Key lifecycle** -- rotation, drain, retire (Staged -> Active -> Draining -> Retired), same model as Transit.
 - **Default-deny** -- configurable default decision when no policy matches (deny or permit).
-- **RESP3 wire protocol** for programmatic access, plus HTTP sidecar for JWKS.
+- **Wire protocol** for programmatic access, plus HTTP sidecar for JWKS.
 - **Runtime configuration** via CONFIG GET/SET/LIST without restarts.
 - **Telemetry** via shroudb-telemetry (console + audit file + OTEL).
 
@@ -265,7 +265,7 @@ When `auth.method = "none"` (default), all commands are allowed without authenti
 
 ## Wire Protocol
 
-RESP3 over TCP. The same protocol as Redis, with Sentry-specific command verbs. Supports pipelining via `PIPELINE ... END`.
+TCP wire protocol with Sentry-specific command verbs. Supports pipelining via `PIPELINE ... END`.
 
 URI schemes: `shroudb-sentry://[token@]host[:port]` or `shroudb-sentry+tls://[token@]host[:port]`.
 

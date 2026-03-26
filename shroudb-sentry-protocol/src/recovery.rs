@@ -60,7 +60,7 @@ pub async fn replay_sentry_wal(
 }
 
 /// Apply a key version WAL payload to the signing index.
-fn replay_key_payload(
+pub fn replay_key_payload(
     engine: &StorageEngine,
     signing_index: &SigningIndex,
     expected_keyring: &str,

@@ -8,6 +8,7 @@ pub mod command;
 pub mod command_parser;
 pub mod decision_cache;
 pub mod dispatch;
+pub mod engine_handler;
 pub mod error;
 pub mod handlers;
 pub mod recovery;

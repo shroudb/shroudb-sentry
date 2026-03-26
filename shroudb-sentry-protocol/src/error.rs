@@ -30,6 +30,9 @@ pub enum CommandError {
     #[error("storage error: {0}")]
     Storage(String),
 
+    #[error("read-only: this node is a replica")]
+    ReadOnly,
+
     #[error(transparent)]
     Sentry(#[from] shroudb_sentry_core::error::SentryError),
 }
@@ -47,6 +50,7 @@ impl CommandError {
             CommandError::NotReady(_) => "NOTREADY",
             CommandError::Internal(_) => "INTERNAL",
             CommandError::Storage(_) => "STORAGE",
+            CommandError::ReadOnly => "READONLY",
             CommandError::Sentry(_) => "SENTRY",
         }
     }
