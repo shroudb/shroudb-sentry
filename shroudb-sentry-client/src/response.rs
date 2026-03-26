@@ -1,14 +1,14 @@
-//! Parsed RESP3 response types and typed result structs for Sentry.
+//! Parsed response types and typed result structs for Sentry.
 
 use std::collections::HashMap;
 
 use crate::error::ClientError;
 
 // ---------------------------------------------------------------------------
-// Raw RESP3 response
+// Raw response
 // ---------------------------------------------------------------------------
 
-/// A parsed RESP3 response value.
+/// A parsed response value.
 #[derive(Debug, Clone)]
 pub enum Response {
     /// Simple string or bulk string.
@@ -96,7 +96,7 @@ impl Response {
         }
     }
 
-    /// Reconstruct the raw RESP3 wire format from a parsed Response.
+    /// Reconstruct the raw wire format from a parsed Response.
     pub fn to_raw(&self) -> String {
         let mut buf = String::new();
         write_raw(self, &mut buf);

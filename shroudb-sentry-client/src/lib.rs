@@ -1,7 +1,7 @@
 //! `shroudb-sentry-client` — typed Rust client library for ShrouDB Sentry.
 //!
 //! Provides a high-level async API for interacting with a Sentry server over TCP.
-//! The RESP3 protocol is handled internally — callers never deal with raw frames.
+//! The wire protocol is handled internally — callers never deal with raw frames.
 //!
 //! # Example
 //!
@@ -207,7 +207,7 @@ impl SentryClient {
         HealthResult::from_response(resp)
     }
 
-    /// Send an arbitrary command and return the raw RESP3 response.
+    /// Send an arbitrary command and return the raw server response.
     pub async fn raw_command(&mut self, args: &[&str]) -> Result<Response, ClientError> {
         self.connection.send_command_strs(args).await
     }

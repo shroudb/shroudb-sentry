@@ -88,7 +88,7 @@ struct Cli {
     #[arg(long)]
     json: bool,
 
-    /// Output raw RESP3 wire format instead of parsed responses.
+    /// Output raw wire format instead of parsed responses.
     #[arg(long)]
     raw: bool,
 

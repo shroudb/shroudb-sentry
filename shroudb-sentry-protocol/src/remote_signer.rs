@@ -1,4 +1,4 @@
-//! Remote signer: connects to a Core server to sign decisions via RESP3.
+//! Remote signer: connects to a Core server to sign decisions over TCP.
 //!
 //! For JWT: sends `ISSUE <keyspace> CLAIMS <json> TTL <secs>`.
 //! For JWKS: sends `JWKS <keyspace>`.
@@ -21,7 +21,7 @@ pub struct RemoteSignerConfig {
     pub keyspace: String,
 }
 
-/// A signer that delegates to a remote Core server via RESP3.
+/// A signer that delegates to a remote Core server over TCP.
 pub struct RemoteSigner {
     connection: Mutex<RemoteConnection>,
     keyspace: String,
@@ -52,7 +52,7 @@ impl RemoteSigner {
     async fn send_command(&self, args: &[&str]) -> Result<String, SentryError> {
         let mut conn = self.connection.lock().await;
 
-        // Write RESP3 array.
+        // Write command frame.
         conn.writer
             .write_all(format!("*{}\r\n", args.len()).as_bytes())
             .await
