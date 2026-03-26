@@ -4,144 +4,20 @@ on:
   push:
     tags: ["v*"]
 
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
-  build:
-    name: Build (${{ matrix.target }})
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - target: x86_64-unknown-linux-musl
-            os: ubuntu-latest
-          - target: aarch64-unknown-linux-musl
-            os: ubuntu-latest
-          - target: x86_64-apple-darwin
-            os: macos-latest
-          - target: aarch64-apple-darwin
-            os: macos-latest
-    steps:
-      - uses: actions/checkout@v5
-      - name: Install Rust
-        run: rustup target add ${{ matrix.target }}
-      - name: Install musl tools (Linux x86_64)
-        if: matrix.target == 'x86_64-unknown-linux-musl'
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
-      - name: Install cross (Linux aarch64)
-        if: matrix.target == 'aarch64-unknown-linux-musl'
-        run: curl -fsSL https://github.com/cross-rs/cross/releases/latest/download/cross-x86_64-unknown-linux-musl.tar.gz | sudo tar xz -C /usr/local/bin
-      - name: Build (cargo)
-        if: matrix.target != 'aarch64-unknown-linux-musl'
-        run: cargo build --release --target ${{ matrix.target }} -p shroudb-sentry-server -p shroudb-sentry-cli
-      - name: Build (cross)
-        if: matrix.target == 'aarch64-unknown-linux-musl'
-        run: cross build --release --target ${{ matrix.target }} -p shroudb-sentry-server -p shroudb-sentry-cli
-      - name: Package
-        run: |
-          mkdir -p dist
-          cp target/${{ matrix.target }}/release/shroudb-sentry dist/
-          cp target/${{ matrix.target }}/release/shroudb-sentry-cli dist/
-          cd dist && tar czf shroudb-sentry-${{ github.ref_name }}-${{ matrix.target }}.tar.gz shroudb-sentry shroudb-sentry-cli && cd ..
-          rm dist/shroudb-sentry dist/shroudb-sentry-cli
-      - name: Upload release artifacts
-        uses: actions/upload-artifact@v5
-        with:
-          name: release-${{ matrix.target }}
-          path: dist/*.tar.gz
-
-  docker-rc:
-    name: Docker RC
-    if: contains(github.ref, '-rc')
-    runs-on: [self-hosted, railway]
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v5
-      - name: Build and push
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          docker buildx create --use --name multiarch --driver docker-container 2>/dev/null || docker buildx use multiarch
-          docker buildx build \
-            --platform linux/amd64,linux/arm64 \
-            --target shroudb-sentry \
-            --tag ghcr.io/shroudb/sentry:${{ github.ref_name }} \
-            --push .
-
-  docker-release:
-    name: Docker Release
-    if: "!contains(github.ref, '-rc')"
-    runs-on: [self-hosted, railway]
-    permissions:
-      contents: read
-      packages: write
-    steps:
-      - uses: actions/checkout@v5
-      - name: Build and push
-        run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-          echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
-          docker buildx create --use --name multiarch --driver docker-container 2>/dev/null || docker buildx use multiarch
-          docker buildx build \
-            --platform linux/amd64,linux/arm64 \
-            --target shroudb-sentry \
-            --tag shroudb/sentry:${{ github.ref_name }} \
-            --tag shroudb/sentry:latest \
-            --tag ghcr.io/shroudb/sentry:${{ github.ref_name }} \
-            --tag ghcr.io/shroudb/sentry:latest \
-            --push .
-
-  dockerhub-readme:
-    name: Update Docker Hub README
-    if: "!contains(github.ref, '-rc')"
-    needs: [docker-release]
-    runs-on: [self-hosted, railway]
-    steps:
-      - uses: actions/checkout@v5
-      - name: Push README to Docker Hub
-        run: |
-          TOKEN=$(curl -s -X POST "https://hub.docker.com/v2/users/login/" \
-            -H "Content-Type: application/json" \
-            -d '{"username":"'"$DOCKERHUB_USERNAME"'","password":"'"$DOCKERHUB_TOKEN"'"}' \
-            | jq -r .token)
-          curl -s -X PATCH "https://hub.docker.com/v2/repositories/shroudb/sentry/" \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Content-Type: application/json" \
-            --data-binary @- <<EOF
-          {"full_description": $(jq -Rs . < DOCKER.md)}
-          EOF
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
-
-  publish-release:
-    name: Publish GitHub Release
-    if: "!contains(github.ref, '-rc')"
-    needs: [build]
-    runs-on: [self-hosted, railway]
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v5
-        with:
-          path: artifacts
-          pattern: release-*
-          merge-multiple: true
-      - name: Create GitHub release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create "${{ github.ref_name }}" artifacts/*.tar.gz \
-            --repo "${{ github.repository }}" \
-            --generate-notes
-      - name: Update Homebrew formula
-        env:
-          GH_TOKEN: ${{ secrets.GH_PAT }}
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          gh api repos/shroudb/homebrew-tap/dispatches \
-            -f event_type=formula-update \
-            -f "client_payload[formula]=shroudb-sentry" \
-            -f "client_payload[version]=$VERSION"
+  release:
+    uses: shroudb/.github/.github/workflows/rust-release.yml@main
+    with:
+      product: "sentry"
+      server_package: "shroudb-sentry-server"
+      server_binary: "shroudb-sentry"
+      cli_package: "shroudb-sentry-cli"
+      cli_binary: "shroudb-sentry-cli"
+      docker_server_target: "shroudb-sentry"
+      docker_cli_target: "shroudb-sentry"
+      crates: "shroudb-sentry-core,shroudb-sentry-protocol,shroudb-sentry-client,shroudb-sentry-server,shroudb-sentry-cli"
+    secrets:
+      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+      GH_PAT: ${{ secrets.GH_PAT }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
