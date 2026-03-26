@@ -2,6 +2,17 @@
 
 Policy-based authorization engine — evaluates access control policies and returns signed JWT decisions.
 
+## Security posture
+
+ShrouDB is security infrastructure. Every change must be evaluated through a security lens:
+
+- **Fail closed, not open.** When in doubt, deny access, reject the request, or return an error. Never default to permissive behavior for convenience.
+- **No plaintext at rest.** Secrets, keys, and sensitive data must be encrypted before touching disk. If a value could be sensitive, treat it as sensitive.
+- **Minimize exposure windows.** Plaintext in memory must be zeroized after use. Connections holding decrypted data must be short-lived. Audit every code path where sensitive data is held in the clear.
+- **Cryptographic choices are not negotiable.** Do not downgrade algorithms, skip integrity checks, weaken key derivation, or reduce key sizes to simplify implementation. If the secure path is harder, take the harder path.
+- **Every shortcut is a vulnerability.** Skipping validation, hardcoding credentials, disabling TLS for testing, using `unsafe` without justification, suppressing security-relevant warnings — these are not acceptable trade-offs regardless of time pressure. The correct implementation is the only implementation.
+- **Audit surface changes require scrutiny.** Any change that modifies authentication, authorization, key management, WAL encryption, or network-facing code must be reviewed with the assumption that an attacker will examine it.
+
 ## Pre-push checklist (mandatory — no exceptions)
 
 Every check below **must** pass locally before pushing to any branch. Do not rely on GitHub Actions to catch these — CI is a safety net, not the first line of defense.
