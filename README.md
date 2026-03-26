@@ -290,6 +290,35 @@ println!("Decision: {}", result.decision);
 println!("Token: {}", result.token);
 ```
 
+## Replication
+
+ShrouDB Sentry supports single-leader replication for read scaling and high availability.
+
+### Configuration
+
+```toml
+[replication]
+role = "primary"          # "standalone" (default) | "primary" | "replica"
+bind = "0.0.0.0:6400"    # Primary: replication listener address
+# primary = "10.0.1.5:6400"  # Replica: primary address
+# staleness_budget_ms = 500   # Replica: max lag before rejecting reads
+```
+
+### Roles
+
+- **Standalone** (default): No replication. Single-node operation.
+- **Primary**: Accepts reads and writes. Streams WAL entries to connected replicas.
+- **Replica**: Accepts reads only. Receives WAL stream from primary. Write commands return `READONLY` error.
+
+### Manual Failover
+
+To promote a replica to primary:
+```
+PROMOTE
+```
+
+The replica disconnects from the old primary, opens its WAL writer, and begins accepting writes.
+
 ## What ShrouDB Sentry is NOT
 
 - **Not an identity provider.** It does not authenticate users -- it authorizes already-authenticated principals.

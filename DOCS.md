@@ -531,3 +531,35 @@ ShrouDB Sentry uses structured telemetry via `shroudb-telemetry`:
 - **OpenTelemetry (OTEL)** -- optional export of traces and metrics to an OTEL-compatible collector.
 
 Log level is controlled via the `LOG_LEVEL` environment variable.
+
+---
+
+## Replication
+
+ShrouDB Sentry supports single-leader replication via WAL shipping. A primary streams encrypted WAL entries to replicas over TCP. Replicas apply entries in order and serve read-only queries.
+
+### Configuration
+
+Add a `[replication]` section to your config file:
+
+```toml
+[replication]
+role = "primary"          # "standalone" (default) | "primary" | "replica"
+bind = "0.0.0.0:6400"    # Primary: replication listener address
+# primary = "10.0.1.5:6400"  # Replica: primary address
+# staleness_budget_ms = 500   # Replica: max lag before rejecting reads
+```
+
+### PROMOTE
+
+Promote this replica to primary.
+
+**Syntax:** `PROMOTE`
+
+**Replica behavior:** Disconnects from primary, transitions to Primary role, begins accepting writes.
+
+**Error:** `BADARG` if node is not a replica.
+
+### READONLY Error
+
+Write commands sent to a replica return a `READONLY` error. Clients should redirect writes to the primary.

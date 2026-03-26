@@ -52,3 +52,4 @@ ShrouDB Sentry is a **policy-based authorization engine** that returns **cryptog
 - **Configuration:** TOML file with signing algorithm, rotation schedule, and policy directory. Policies are separate TOML files in a watched directory.
 - **Observability:** Structured JSON logging via tracing. Audit log for write operations. JWKS endpoint for external verification infrastructure.
 - **Deployment:** Single static binary. TLS and mTLS supported natively. HTTP sidecar for JWKS.
+- **Replication:** Single-leader WAL shipping. A primary streams encrypted WAL entries to replicas over TCP. Replicas serve read-only queries and can be promoted to primary for manual failover.
