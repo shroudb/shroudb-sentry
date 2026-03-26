@@ -1,0 +1,190 @@
+# ShrouDB Sentry Protocol Specification
+#
+# Machine-readable definition of the ShrouDB Sentry protocol.
+# Used by shroudb-codegen to generate typed client libraries in any language.
+
+[protocol]
+name = "shroudb-sentry"
+version = "0.1.0"
+description = "Policy-based authorization engine"
+default_port = 6799
+uri_schemes = ["shroudb-sentry://", "shroudb-sentry+tls://"]
+uri_format = "{scheme}[token@]host[:port]"
+
+[protocol.wire_format]
+type = "resp3"
+request_format = "array_of_bulk_strings"
+success_envelope = "map"
+error_envelope = "simple_error"
+success_status_field = "status"
+success_status_value = "OK"
+
+# ─── Error codes ──────────────────────────────────────────────────────────────
+
+[error_codes]
+
+[error_codes.DENIED]
+description = "Authentication required or insufficient permissions"
+http_equiv = 401
+
+[error_codes.NOTFOUND]
+description = "Policy not found"
+http_equiv = 404
+
+[error_codes.BADARG]
+description = "Missing or invalid argument"
+http_equiv = 400
+
+[error_codes.NOKEY]
+description = "Signing key not available"
+http_equiv = 500
+
+[error_codes.NOTREADY]
+description = "Server is starting up or shutting down"
+http_equiv = 503
+
+[error_codes.INTERNAL]
+description = "Unexpected server error"
+http_equiv = 500
+
+# ─── Shared types ─────────────────────────────────────────────────────────────
+
+[types]
+
+[types.policy_name]
+description = "Policy identifier"
+wire_type = "bulk_string"
+rust_type = "String"
+python_type = "str"
+typescript_type = "string"
+
+[types.json_value]
+description = "JSON-encoded evaluation request or response"
+wire_type = "bulk_string"
+rust_type = "String"
+python_type = "str"
+typescript_type = "string"
+
+[types.decision]
+description = "Authorization decision (allow, deny)"
+wire_type = "bulk_string"
+rust_type = "String"
+python_type = "str"
+typescript_type = "string"
+
+[types.token]
+description = "Signed JWT decision token"
+wire_type = "bulk_string"
+rust_type = "String"
+python_type = "str"
+typescript_type = "string"
+
+# ─── Commands ─────────────────────────────────────────────────────────────────
+
+[commands]
+
+[commands.evaluate]
+verb = "EVALUATE"
+description = "Evaluate an authorization request against loaded policies"
+replica_behavior = "PureRead"
+params = [
+    { name = "json", type = "json_value", required = true, position = 1, description = "JSON-encoded authorization request" },
+]
+response = [
+    { name = "decision", type = "decision", description = "Authorization decision (allow or deny)" },
+    { name = "token", type = "token", description = "Signed JWT encoding the decision" },
+    { name = "reasons", type = "array", description = "Policy evaluation reasons" },
+]
+errors = [
+    { code = "BADARG", condition = "Invalid JSON or missing required fields" },
+    { code = "NOKEY", condition = "Signing key not available for JWT creation" },
+]
+
+[commands.policy_reload]
+verb = "POLICY_RELOAD"
+description = "Reload policies from disk"
+replica_behavior = "WriteOnly"
+params = []
+response = [
+    { name = "count", type = "integer", description = "Number of policies loaded" },
+]
+errors = [
+    { code = "INTERNAL", condition = "Failed to read or parse policy files" },
+]
+
+[commands.policy_list]
+verb = "POLICY_LIST"
+description = "List all loaded policies"
+replica_behavior = "PureRead"
+params = []
+response = [
+    { name = "policies", type = "array", description = "List of policy names" },
+]
+
+[commands.policy_info]
+verb = "POLICY_INFO"
+description = "Get information about a specific policy"
+replica_behavior = "PureRead"
+params = [
+    { name = "name", type = "policy_name", required = true, position = 1, description = "Policy name" },
+]
+response = [
+    { name = "name", type = "policy_name", description = "Policy name" },
+    { name = "version", type = "string", description = "Policy version" },
+    { name = "rules", type = "integer", description = "Number of rules in the policy" },
+    { name = "loaded_at", type = "string", description = "When the policy was loaded (RFC 3339)" },
+]
+errors = [
+    { code = "NOTFOUND", condition = "Policy does not exist" },
+]
+
+[commands.key_rotate]
+verb = "KEY_ROTATE"
+description = "Rotate the signing key used for JWT decisions"
+replica_behavior = "WriteOnly"
+params = [
+    { name = "force", type = "boolean", required = false, key = "FORCE", description = "Force rotation regardless of age" },
+    { name = "dryrun", type = "boolean", required = false, key = "DRYRUN", description = "Preview rotation without applying" },
+]
+response = [
+    { name = "key_id", type = "string", description = "New signing key identifier" },
+    { name = "previous_key_id", type = "string", description = "Previous signing key identifier", optional = true },
+]
+
+[commands.key_info]
+verb = "KEY_INFO"
+description = "Get signing key information"
+replica_behavior = "PureRead"
+params = []
+response = [
+    { name = "key_id", type = "string", description = "Current signing key identifier" },
+    { name = "algorithm", type = "string", description = "Signing algorithm" },
+    { name = "created_at", type = "string", description = "Key creation time (RFC 3339)" },
+]
+errors = [
+    { code = "NOKEY", condition = "No signing key configured" },
+]
+
+[commands.health]
+verb = "HEALTH"
+description = "Check server health"
+replica_behavior = "PureRead"
+simple_response = true
+params = []
+response = [
+    { name = "state", type = "string", description = "Server state (READY, STARTING, etc.)" },
+]
+
+[commands.auth]
+verb = "AUTH"
+description = "Authenticate the connection"
+replica_behavior = "PureRead"
+params = [
+    { name = "token", type = "string", required = true, position = 1, description = "Bearer token" },
+]
+response = [
+    { name = "status", type = "string", description = "OK on success" },
+]
+errors = [
+    { code = "DENIED", condition = "Invalid or expired token" },
+]
