@@ -4,13 +4,14 @@ version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
+publish.workspace = true
 
 [[bin]]
 name = "shroudb-sentry-cli"
 path = "src/main.rs"
 
 [dependencies]
-shroudb-sentry-client = { path = "../shroudb-sentry-client" }
+shroudb-sentry-client.workspace = true
 clap.workspace = true
 tokio.workspace = true
 anyhow.workspace = true

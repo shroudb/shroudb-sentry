@@ -14,17 +14,19 @@ version = "0.1.0"
 edition = "2024"
 rust-version = "1.92"
 license = "MIT OR Apache-2.0"
+publish = ["shroudb"]
 
 [workspace.dependencies]
 # Internal crates
-shroudb-sentry-core = { path = "shroudb-sentry-core" }
-shroudb-sentry-protocol = { path = "shroudb-sentry-protocol" }
+shroudb-sentry-core = { path = "shroudb-sentry-core", version = "0.1.0", registry = "shroudb" }
+shroudb-sentry-protocol = { path = "shroudb-sentry-protocol", version = "0.1.0", registry = "shroudb" }
+shroudb-sentry-client = { path = "shroudb-sentry-client", version = "0.1.0", registry = "shroudb" }
 
-# Commons crates (shroudb/commons)
-shroudb-core = { git = "https://github.com/shroudb/commons.git", tag = "v0.8.0" }
-shroudb-crypto = { git = "https://github.com/shroudb/commons.git", tag = "v0.8.0" }
-shroudb-storage = { git = "https://github.com/shroudb/commons.git", tag = "v0.8.0" }
-shroudb-telemetry = { git = "https://github.com/shroudb/commons.git", tag = "v0.8.0" }
+# Commons crates (shroudb registry)
+shroudb-core = { version = "0.1.0", registry = "shroudb" }
+shroudb-crypto = { version = "0.1.0", registry = "shroudb" }
+shroudb-storage = { version = "0.1.0", registry = "shroudb" }
+shroudb-telemetry = { version = "0.1.0", registry = "shroudb" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
