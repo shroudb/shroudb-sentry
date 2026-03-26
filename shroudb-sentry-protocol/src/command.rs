@@ -22,6 +22,15 @@ pub enum Command {
     /// Health check.
     Health,
 
+    /// Get a configuration value.
+    ConfigGet { key: String },
+
+    /// Set a configuration value.
+    ConfigSet { key: String, value: String },
+
+    /// List all configuration values.
+    ConfigList,
+
     /// Authenticate the connection.
     Auth { token: String },
 
@@ -39,6 +48,9 @@ pub fn command_verb(cmd: &Command) -> &'static str {
         Command::KeyInfo => "KEY_INFO",
         Command::Evaluate { .. } => "EVALUATE",
         Command::Health => "HEALTH",
+        Command::ConfigGet { .. } => "CONFIG",
+        Command::ConfigSet { .. } => "CONFIG",
+        Command::ConfigList => "CONFIG",
         Command::Auth { .. } => "AUTH",
         Command::Pipeline(_) => "PIPELINE",
     }
@@ -54,6 +66,8 @@ impl Command {
                 | Command::KeyInfo
                 | Command::Evaluate { .. }
                 | Command::Health
+                | Command::ConfigGet { .. }
+                | Command::ConfigList
         )
     }
 }

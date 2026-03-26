@@ -1,4 +1,4 @@
-//! HTTP server for Prometheus metrics and JWKS endpoint.
+//! HTTP server for JWKS endpoint.
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -14,14 +14,12 @@ use shroudb_sentry_protocol::signing_index::SigningIndex;
 #[derive(Clone)]
 struct HttpState {
     signing_index: Arc<SigningIndex>,
-    metrics_handle: metrics_exporter_prometheus::PrometheusHandle,
 }
 
 /// Configuration for the HTTP server.
 pub struct HttpConfig {
     pub bind: SocketAddr,
     pub signing_index: Arc<SigningIndex>,
-    pub metrics_handle: metrics_exporter_prometheus::PrometheusHandle,
 }
 
 /// Start the HTTP server.
@@ -32,12 +30,10 @@ pub async fn run_http_server(
     let bind = config.bind;
     let state = HttpState {
         signing_index: config.signing_index,
-        metrics_handle: config.metrics_handle,
     };
 
     let app = Router::new()
         .route("/.well-known/jwks.json", get(get_jwks))
-        .route("/metrics", get(get_metrics))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(bind).await?;
@@ -71,14 +67,4 @@ async fn get_jwks(State(state): State<HttpState>) -> impl IntoResponse {
         )
             .into_response(),
     }
-}
-
-/// GET /metrics — Prometheus metrics.
-async fn get_metrics(State(state): State<HttpState>) -> impl IntoResponse {
-    let metrics = state.metrics_handle.render();
-    (
-        StatusCode::OK,
-        [(header::CONTENT_TYPE, "text/plain; charset=utf-8")],
-        metrics,
-    )
 }

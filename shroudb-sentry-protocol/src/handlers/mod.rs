@@ -1,3 +1,4 @@
+pub mod config;
 pub mod evaluate;
 pub mod health;
 pub mod key_info;

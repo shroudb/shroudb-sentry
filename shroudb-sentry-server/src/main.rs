@@ -14,9 +14,6 @@ use clap::Parser;
 use shroudb_crypto::SecretBytes;
 use shroudb_sentry_core::signing::SigningKeyring;
 use shroudb_storage::{ChainedMasterKeySource, MasterKeySource, StorageEngine};
-use tracing_subscriber::Layer as _;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::util::SubscriberInitExt;
 
 #[derive(Parser)]
 #[command(
@@ -46,22 +43,25 @@ async fn main() -> anyhow::Result<()> {
         Some(cfg) => {
             let data_dir = &cfg.storage.data_dir;
             std::fs::create_dir_all(data_dir)?;
-
-            init_logging(data_dir)?;
-
-            tracing::info!(config = %cli.config.display(), "configuration loaded");
             cfg
         }
         None => {
             let data_dir = std::path::PathBuf::from("./sentry-data");
             std::fs::create_dir_all(&data_dir)?;
-
-            init_logging(&data_dir)?;
-
-            tracing::info!("no config file found, starting with defaults");
             config::SentryConfig::default()
         }
     };
+
+    // 2b. Initialize telemetry.
+    let _telemetry_guard = {
+        let telemetry_config = shroudb_telemetry::TelemetryConfig {
+            service_name: "sentry".into(),
+            data_dir: Some(cfg.storage.data_dir.display().to_string()),
+            ..Default::default()
+        };
+        shroudb_telemetry::init_telemetry(&telemetry_config).map_err(|e| anyhow::anyhow!("{e}"))?
+    };
+    tracing::info!(config = %cli.config.display(), "configuration loaded");
 
     // 3. Resolve master key source.
     let key_source = resolve_master_key()?;
@@ -160,12 +160,7 @@ async fn main() -> anyhow::Result<()> {
     }
     let dispatcher = Arc::new(dispatcher);
 
-    // 12. Install Prometheus metrics recorder.
-    let metrics_handle = metrics_exporter_prometheus::PrometheusBuilder::new()
-        .install_recorder()
-        .expect("failed to install metrics recorder");
-
-    // 13. Set up shutdown signal (SIGTERM + SIGINT).
+    // 12. Set up shutdown signal (SIGTERM + SIGINT).
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
     tokio::spawn(async move {
         shutdown_signal().await;
@@ -195,12 +190,11 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!(dir = %policies_dir.display(), "policy file watcher started");
     }
 
-    // 15. Start HTTP server (metrics + JWKS only).
+    // 15. Start HTTP server (JWKS only).
     {
         let http_config = http::HttpConfig {
             bind: cfg.server.http_bind,
             signing_index: Arc::clone(&signing_index),
-            metrics_handle: metrics_handle.clone(),
         };
         let http_rx = shutdown_rx.clone();
         tokio::spawn(async move {
@@ -212,7 +206,7 @@ async fn main() -> anyhow::Result<()> {
 
     // 16. Run RESP3 server (blocks until shutdown).
     tracing::info!(bind = %cfg.server.bind, "shroudb-sentry ready");
-    server::run(&cfg.server, dispatcher, metrics_handle, shutdown_rx).await?;
+    server::run(&cfg.server, dispatcher, shutdown_rx).await?;
 
     // 17. Shut down storage engine (flush WAL, fsync).
     engine.shutdown().await?;
@@ -267,41 +261,6 @@ impl MasterKeySource for EphemeralMasterKey {
     fn source_name(&self) -> &str {
         "ephemeral"
     }
-}
-
-fn init_logging(data_dir: &std::path::Path) -> anyhow::Result<()> {
-    use tracing_subscriber::filter::Targets;
-
-    let audit_file = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(data_dir.join("audit.log"))
-        .map_err(|e| anyhow::anyhow!("failed to open audit.log: {e}"))?;
-
-    let audit_layer = tracing_subscriber::fmt::layer()
-        .json()
-        .with_writer(std::sync::Mutex::new(audit_file))
-        .with_filter(Targets::new().with_target("sentry::audit", tracing::Level::INFO));
-
-    let env_filter = resolve_log_filter();
-    let console_layer = tracing_subscriber::fmt::layer()
-        .json()
-        .with_filter(env_filter);
-
-    tracing_subscriber::registry()
-        .with(console_layer)
-        .with(audit_layer)
-        .init();
-
-    Ok(())
-}
-
-fn resolve_log_filter() -> tracing_subscriber::EnvFilter {
-    if let Ok(level) = std::env::var("LOG_LEVEL") {
-        return tracing_subscriber::EnvFilter::new(level);
-    }
-    tracing_subscriber::EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info"))
 }
 
 async fn run_policy_watcher(

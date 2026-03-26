@@ -102,7 +102,14 @@ impl CommandDispatcher {
 
         // Check auth policy if auth is required.
         if self.auth_registry.is_required()
-            && !matches!(cmd, Command::Auth { .. } | Command::Health)
+            && !matches!(
+                cmd,
+                Command::Auth { .. }
+                    | Command::Health
+                    | Command::ConfigGet { .. }
+                    | Command::ConfigSet { .. }
+                    | Command::ConfigList
+            )
         {
             match auth {
                 None => {
@@ -218,6 +225,16 @@ impl CommandDispatcher {
                 resp = resp.with("policy_count", ResponseValue::Integer(policy_count as i64));
                 Ok(resp)
             }
+
+            Command::ConfigGet { key } => {
+                handlers::config::handle_config_get(&self.engine, &key).await
+            }
+
+            Command::ConfigSet { key, value } => {
+                handlers::config::handle_config_set(&self.engine, &key, &value).await
+            }
+
+            Command::ConfigList => handlers::config::handle_config_list(&self.engine).await,
 
             Command::Auth { .. } => Ok(ResponseMap::ok()),
 

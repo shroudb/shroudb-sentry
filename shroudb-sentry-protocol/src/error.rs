@@ -9,6 +9,9 @@ pub enum CommandError {
     #[error("policy not found: {0}")]
     PolicyNotFound(String),
 
+    #[error("{entity} not found: {id}")]
+    NotFound { entity: String, id: String },
+
     #[error("no active signing key")]
     NoActiveKey,
 
@@ -37,6 +40,7 @@ impl CommandError {
         match self {
             CommandError::BadArg { .. } => "BADARG",
             CommandError::PolicyNotFound(_) => "NOTFOUND",
+            CommandError::NotFound { .. } => "NOTFOUND",
             CommandError::NoActiveKey => "NOKEY",
             CommandError::AuthRequired => "DENIED",
             CommandError::Denied { .. } => "DENIED",

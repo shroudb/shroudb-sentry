@@ -21,6 +21,7 @@ pub fn parse_command(strings: Vec<String>) -> Result<Command, CommandError> {
         "KEY_INFO" => Ok(Command::KeyInfo),
         "EVALUATE" => parse_evaluate(args),
         "HEALTH" => Ok(Command::Health),
+        "CONFIG" => parse_config(args),
         "AUTH" => parse_auth(args),
         "PIPELINE" => parse_pipeline(&strings),
         _ => Err(CommandError::BadArg {
@@ -56,6 +57,30 @@ fn parse_auth(args: &[String]) -> Result<Command, CommandError> {
     Ok(Command::Auth {
         token: args[0].clone(),
     })
+}
+
+fn parse_config(args: &[String]) -> Result<Command, CommandError> {
+    require_arg(args, "CONFIG", 1)?;
+    let sub = args[0].to_ascii_uppercase();
+    match sub.as_str() {
+        "GET" => {
+            require_arg(args, "CONFIG GET", 2)?;
+            Ok(Command::ConfigGet {
+                key: args[1].clone(),
+            })
+        }
+        "SET" => {
+            require_arg(args, "CONFIG SET", 3)?;
+            Ok(Command::ConfigSet {
+                key: args[1].clone(),
+                value: args[2].clone(),
+            })
+        }
+        "LIST" => Ok(Command::ConfigList),
+        other => Err(CommandError::BadArg {
+            message: format!("unknown CONFIG subcommand: {other}"),
+        }),
+    }
 }
 
 fn parse_pipeline(strings: &[String]) -> Result<Command, CommandError> {
@@ -146,6 +171,39 @@ mod tests {
     fn parse_health() {
         let cmd = parse_command(s(&["HEALTH"])).unwrap();
         assert!(matches!(cmd, Command::Health));
+    }
+
+    #[test]
+    fn parse_config_get() {
+        let cmd = parse_command(s(&["CONFIG", "GET", "decision_ttl_secs"])).unwrap();
+        match cmd {
+            Command::ConfigGet { key } => assert_eq!(key, "decision_ttl_secs"),
+            _ => panic!("expected ConfigGet"),
+        }
+    }
+
+    #[test]
+    fn parse_config_set() {
+        let cmd = parse_command(s(&["CONFIG", "SET", "decision_ttl_secs", "300"])).unwrap();
+        match cmd {
+            Command::ConfigSet { key, value } => {
+                assert_eq!(key, "decision_ttl_secs");
+                assert_eq!(value, "300");
+            }
+            _ => panic!("expected ConfigSet"),
+        }
+    }
+
+    #[test]
+    fn parse_config_list() {
+        let cmd = parse_command(s(&["CONFIG", "LIST"])).unwrap();
+        assert!(matches!(cmd, Command::ConfigList));
+    }
+
+    #[test]
+    fn parse_config_missing_subcommand() {
+        let result = parse_command(s(&["CONFIG"]));
+        assert!(result.is_err());
     }
 
     #[test]

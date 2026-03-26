@@ -15,7 +15,7 @@ use crate::connection::handle_connection;
 pub async fn run(
     config: &ServerConfig,
     dispatcher: Arc<CommandDispatcher>,
-    _metrics_handle: metrics_exporter_prometheus::PrometheusHandle,
+
     mut shutdown_rx: watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
     let listener = TcpListener::bind(config.bind)

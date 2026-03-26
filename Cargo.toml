@@ -21,9 +21,10 @@ shroudb-sentry-core = { path = "shroudb-sentry-core" }
 shroudb-sentry-protocol = { path = "shroudb-sentry-protocol" }
 
 # Commons crates (shroudb/commons)
-shroudb-core = { git = "https://github.com/shroudb/commons.git", tag = "v0.2.0" }
-shroudb-crypto = { git = "https://github.com/shroudb/commons.git", tag = "v0.2.0" }
-shroudb-storage = { git = "https://github.com/shroudb/commons.git", tag = "v0.2.0" }
+shroudb-core = { git = "https://github.com/shroudb/commons.git", tag = "v0.6.0" }
+shroudb-crypto = { git = "https://github.com/shroudb/commons.git", tag = "v0.6.0" }
+shroudb-storage = { git = "https://github.com/shroudb/commons.git", tag = "v0.6.0" }
+shroudb-telemetry = { git = "https://github.com/shroudb/commons.git", tag = "v0.6.0" }
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
@@ -46,7 +47,6 @@ tokio-rustls = "0.26"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 metrics = "0.24"
-metrics-exporter-prometheus = "0.18"
 
 # Utilities
 thiserror = "2"
