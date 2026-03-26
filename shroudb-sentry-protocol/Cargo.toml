@@ -1,0 +1,25 @@
+[package]
+name = "shroudb-sentry-protocol"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+shroudb-sentry-core.workspace = true
+shroudb-crypto.workspace = true
+shroudb-storage.workspace = true
+
+dashmap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+metrics.workspace = true
+base64.workspace = true
+hex.workspace = true
+
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["full", "test-util"] }

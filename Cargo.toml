@@ -1,0 +1,58 @@
+[workspace]
+resolver = "3"
+default-members = ["shroudb-sentry-server"]
+members = [
+    "shroudb-sentry-server",
+    "shroudb-sentry-core",
+    "shroudb-sentry-protocol",
+    "shroudb-sentry-client",
+    "shroudb-sentry-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.92"
+license = "MIT OR Apache-2.0"
+
+[workspace.dependencies]
+# Internal crates
+shroudb-sentry-core = { path = "shroudb-sentry-core" }
+shroudb-sentry-protocol = { path = "shroudb-sentry-protocol" }
+
+# Commons crates (shroudb/commons)
+shroudb-core = { git = "https://github.com/shroudb/commons.git", tag = "v0.2.0" }
+shroudb-crypto = { git = "https://github.com/shroudb/commons.git", tag = "v0.2.0" }
+shroudb-storage = { git = "https://github.com/shroudb/commons.git", tag = "v0.2.0" }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1"
+
+# Crypto
+ring = "0.17"
+
+# Networking
+axum = "0.8"
+rustls = "0.23"
+rustls-pki-types = { version = "1", features = ["std"] }
+tokio-rustls = "0.26"
+
+# Observability
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+metrics = "0.24"
+metrics-exporter-prometheus = "0.18"
+
+# Utilities
+thiserror = "2"
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+dashmap = "6"
+base64 = "0.22"
+hex = "0.4"
+libc = "0.2"

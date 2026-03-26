@@ -1,0 +1,49 @@
+use thiserror::Error;
+
+/// Errors returned by command execution.
+#[derive(Debug, Error)]
+pub enum CommandError {
+    #[error("bad argument: {message}")]
+    BadArg { message: String },
+
+    #[error("policy not found: {0}")]
+    PolicyNotFound(String),
+
+    #[error("no active signing key")]
+    NoActiveKey,
+
+    #[error("authentication required")]
+    AuthRequired,
+
+    #[error("access denied: {reason}")]
+    Denied { reason: String },
+
+    #[error("server not ready: {0}")]
+    NotReady(String),
+
+    #[error("internal error: {0}")]
+    Internal(String),
+
+    #[error("storage error: {0}")]
+    Storage(String),
+
+    #[error(transparent)]
+    Sentry(#[from] shroudb_sentry_core::error::SentryError),
+}
+
+impl CommandError {
+    /// RESP3 error prefix for wire serialization.
+    pub fn error_code(&self) -> &'static str {
+        match self {
+            CommandError::BadArg { .. } => "BADARG",
+            CommandError::PolicyNotFound(_) => "NOTFOUND",
+            CommandError::NoActiveKey => "NOKEY",
+            CommandError::AuthRequired => "DENIED",
+            CommandError::Denied { .. } => "DENIED",
+            CommandError::NotReady(_) => "NOTREADY",
+            CommandError::Internal(_) => "INTERNAL",
+            CommandError::Storage(_) => "STORAGE",
+            CommandError::Sentry(_) => "SENTRY",
+        }
+    }
+}
