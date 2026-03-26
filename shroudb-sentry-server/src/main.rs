@@ -195,16 +195,12 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!(dir = %policies_dir.display(), "policy file watcher started");
     }
 
-    // 15. Start HTTP API server.
+    // 15. Start HTTP server (metrics + JWKS only).
     {
         let http_config = http::HttpConfig {
             bind: cfg.server.http_bind,
-            policy_set: Arc::clone(&policy_set),
             signing_index: Arc::clone(&signing_index),
-            default_decision,
-            max_batch_size: cfg.evaluation.max_batch_size,
-            auth_registry: Arc::clone(&auth_registry),
-            cors_origins: cfg.server.cors_origins.clone(),
+            metrics_handle: metrics_handle.clone(),
         };
         let http_rx = shutdown_rx.clone();
         tokio::spawn(async move {
