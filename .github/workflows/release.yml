@@ -4,9 +4,16 @@ on:
   push:
     tags: ["v*"]
 
+permissions:
+  contents: write
+  packages: write
+
 jobs:
   release:
     uses: shroudb/.github/.github/workflows/rust-release.yml@main
+    permissions:
+      contents: write
+      packages: write
     with:
       product: "sentry"
       server_package: "shroudb-sentry-server"
