@@ -21,7 +21,7 @@ jobs:
       cli_package: "shroudb-sentry-cli"
       cli_binary: "shroudb-sentry-cli"
       docker_server_target: "shroudb-sentry"
-      docker_cli_target: "shroudb-sentry"
+      docker_cli_target: ""
       crates: "shroudb-sentry-core,shroudb-sentry-protocol,shroudb-sentry-client,shroudb-sentry-server,shroudb-sentry-cli"
     secrets:
       REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
