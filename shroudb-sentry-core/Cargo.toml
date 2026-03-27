@@ -1,5 +1,6 @@
 [package]
 name = "shroudb-sentry-core"
+description = "Core types for ShrouDB Sentry — policy rules, evaluation context, decision models"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

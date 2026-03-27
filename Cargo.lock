@@ -152,6 +152,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a054912289d18629dc78375ba2c3726a3afe3ff71b4edba9dedfca0e3446d1fc"
 dependencies = [
  "aws-lc-sys",
+ "untrusted 0.7.1",
  "zeroize",
 ]
 
@@ -772,10 +773,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ff2abc00be7fca6ebc474524697ae276ad847ad0a6b3faa4bcb027e9a4614ad0"
 dependencies = [
  "cfg-if",
- "js-sys",
  "libc",
  "wasi",
- "wasm-bindgen",
 ]
 
 [[package]]
@@ -1118,16 +1117,18 @@ dependencies = [
 
 [[package]]
 name = "jsonwebtoken"
-version = "9.3.1"
+version = "10.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5a87cc7a48537badeae96744432de36f4be2b4a34a05a5ef32e9dd8a1c169dde"
+checksum = "0529410abe238729a60b108898784df8984c87f6054c9c4fcacc47e4803c1ce1"
 dependencies = [
+ "aws-lc-rs",
  "base64",
+ "getrandom 0.2.17",
  "js-sys",
  "pem",
- "ring",
  "serde",
  "serde_json",
+ "signature",
  "simple_asn1",
 ]
 
@@ -1780,7 +1781,7 @@ dependencies = [
  "cfg-if",
  "getrandom 0.2.17",
  "libc",
- "untrusted",
+ "untrusted 0.9.0",
  "windows-sys 0.52.0",
 ]
 
@@ -1871,7 +1872,7 @@ dependencies = [
  "aws-lc-rs",
  "ring",
  "rustls-pki-types",
- "untrusted",
+ "untrusted 0.9.0",
 ]
 
 [[package]]
@@ -2099,7 +2100,7 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 name = "shroudb-core"
 version = "0.1.0"
 source = "sparse+https://crates.shroudb.dev/api/v1/crates/"
-checksum = "ff19034545edc0830f7e19df34a450ae31818945e8621420e28f2ffb3660faa0"
+checksum = "09e1d1f91e45a4aa4fa18501928d25c4334856388c9cf609180eb8bd07751ec4"
 dependencies = [
  "serde",
  "serde_json",
@@ -2112,7 +2113,7 @@ dependencies = [
 name = "shroudb-crypto"
 version = "0.1.0"
 source = "sparse+https://crates.shroudb.dev/api/v1/crates/"
-checksum = "97a4ffdca2dea21b7a637f20e84a1977b39841a7b00dbf58e463c818b7963bbd"
+checksum = "43fe503d38e47567cc2adae3f3416e264734ea7c56cf13bedc77e9af5435bb6c"
 dependencies = [
  "argon2",
  "base62",
@@ -2223,7 +2224,7 @@ dependencies = [
 name = "shroudb-storage"
 version = "0.1.0"
 source = "sparse+https://crates.shroudb.dev/api/v1/crates/"
-checksum = "54c0739b0a52fbffc17377def77397cba351e6c5d1c148fc49ead1e1b6b7e9ae"
+checksum = "2991ed6bf2570708119ecec41a0371aeca72fb51ec751d99758973fc6068e1d3"
 dependencies = [
  "crc32fast",
  "dashmap",
@@ -2244,7 +2245,7 @@ dependencies = [
 name = "shroudb-telemetry"
 version = "0.1.0"
 source = "sparse+https://crates.shroudb.dev/api/v1/crates/"
-checksum = "33b8dc7dea0cbf1ad583c25ee260c08f9fb0f4f3e4cdad80b64d634d5717525d"
+checksum = "cb1d50b7810fd9c4718f6db64e0dd76906cf63334f0adc83d16be257b5de1645"
 dependencies = [
  "opentelemetry",
  "opentelemetry-otlp",
@@ -2774,6 +2775,12 @@ name = "unicode-xid"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
+
+[[package]]
+name = "untrusted"
+version = "0.7.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a156c684c91ea7d62626509bce3cb4e1d9ed5c4d978f7b4352658f96a4c26b4a"
 
 [[package]]
 name = "untrusted"

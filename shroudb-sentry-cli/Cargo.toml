@@ -1,5 +1,6 @@
 [package]
 name = "shroudb-sentry-cli"
+description = "Interactive CLI for ShrouDB Sentry"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

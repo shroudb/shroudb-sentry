@@ -10,6 +10,7 @@ members = [
 ]
 
 [workspace.package]
+description = "Policy-as-code authorization engine with signed JWT decisions"
 version = "0.1.0"
 edition = "2024"
 rust-version = "1.92"

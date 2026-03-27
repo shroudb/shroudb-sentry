@@ -1,5 +1,6 @@
 [package]
 name = "shroudb-sentry-protocol"
+description = "Command engine for ShrouDB Sentry"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
