@@ -108,6 +108,8 @@ impl CommandDispatcher {
                     | Command::ConfigGet { .. }
                     | Command::ConfigSet { .. }
                     | Command::ConfigList
+                    | Command::Ping
+                    | Command::CommandList
             )
         {
             match auth {
@@ -123,7 +125,7 @@ impl CommandDispatcher {
         }
 
         // Check engine health (allow Health commands through).
-        if !matches!(cmd, Command::Health) && self.engine.health() != HealthState::Ready {
+        if !matches!(cmd, Command::Health | Command::Ping | Command::CommandList) && self.engine.health() != HealthState::Ready {
             return CommandResponse::Error(CommandError::NotReady(
                 self.engine.health().to_string(),
             ));
@@ -227,6 +229,23 @@ impl CommandDispatcher {
             }
 
             Command::ConfigList => handlers::config::handle_config_list(&self.engine).await,
+
+            Command::Ping => Ok(ResponseMap::ok().with("message", ResponseValue::String("PONG".into()))),
+
+            Command::CommandList => {
+                let commands = vec![
+                    "EVALUATE", "POLICY_RELOAD", "POLICY_LIST", "POLICY_INFO",
+                    "KEY_ROTATE", "KEY_INFO", "HEALTH", "CONFIG", "AUTH",
+                    "PING", "COMMAND",
+                ];
+                let values: Vec<ResponseValue> = commands
+                    .into_iter()
+                    .map(|c| ResponseValue::String(c.into()))
+                    .collect();
+                Ok(ResponseMap::ok()
+                    .with("count", ResponseValue::Integer(values.len() as i64))
+                    .with("commands", ResponseValue::Array(values)))
+            }
 
             Command::Auth { .. } => Ok(ResponseMap::ok()),
 

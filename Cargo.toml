@@ -11,7 +11,7 @@ members = [
 
 [workspace.package]
 description = "Policy-as-code authorization engine with signed JWT decisions"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 rust-version = "1.92"
 license = "MIT OR Apache-2.0"
@@ -19,9 +19,9 @@ publish = ["shroudb"]
 
 [workspace.dependencies]
 # Internal crates
-shroudb-sentry-core = { path = "shroudb-sentry-core", version = "0.1.0", registry = "shroudb" }
-shroudb-sentry-protocol = { path = "shroudb-sentry-protocol", version = "0.1.0", registry = "shroudb" }
-shroudb-sentry-client = { path = "shroudb-sentry-client", version = "0.1.0", registry = "shroudb" }
+shroudb-sentry-core = { path = "shroudb-sentry-core", version = "0.1.1", registry = "shroudb" }
+shroudb-sentry-protocol = { path = "shroudb-sentry-protocol", version = "0.1.1", registry = "shroudb" }
+shroudb-sentry-client = { path = "shroudb-sentry-client", version = "0.1.1", registry = "shroudb" }
 
 # Commons crates (shroudb registry)
 shroudb-core = { version = "0.1.0", registry = "shroudb" }

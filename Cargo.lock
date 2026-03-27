@@ -2134,7 +2134,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-cli"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -2146,7 +2146,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-client"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "rustls",
  "rustls-native-certs",
@@ -2160,7 +2160,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-core"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64",
  "hex",
@@ -2176,7 +2176,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-protocol"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "base64",
  "dashmap",
@@ -2194,7 +2194,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-server"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
  "anyhow",
  "axum 0.8.8",

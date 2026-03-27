@@ -23,6 +23,8 @@ pub fn parse_command(strings: Vec<String>) -> Result<Command, CommandError> {
         "HEALTH" => Ok(Command::Health),
         "CONFIG" => parse_config(args),
         "AUTH" => parse_auth(args),
+        "PING" => Ok(Command::Ping),
+        "COMMAND" => parse_command_sub(args),
         "PIPELINE" => parse_pipeline(&strings),
         _ => Err(CommandError::BadArg {
             message: format!("unknown command: {verb}"),
@@ -79,6 +81,21 @@ fn parse_config(args: &[String]) -> Result<Command, CommandError> {
         "LIST" => Ok(Command::ConfigList),
         other => Err(CommandError::BadArg {
             message: format!("unknown CONFIG subcommand: {other}"),
+        }),
+    }
+}
+
+fn parse_command_sub(args: &[String]) -> Result<Command, CommandError> {
+    if args.is_empty() {
+        return Err(CommandError::BadArg {
+            message: "COMMAND requires a subcommand (LIST)".into(),
+        });
+    }
+    let sub = args[0].to_ascii_uppercase();
+    match sub.as_str() {
+        "LIST" => Ok(Command::CommandList),
+        other => Err(CommandError::BadArg {
+            message: format!("unknown COMMAND subcommand: {other}"),
         }),
     }
 }

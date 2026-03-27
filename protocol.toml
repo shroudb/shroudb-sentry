@@ -188,3 +188,23 @@ response = [
 errors = [
     { code = "DENIED", condition = "Invalid or expired token" },
 ]
+
+[commands.ping]
+verb = "PING"
+description = "Simple connectivity check — returns PONG without auth or health checks"
+replica_behavior = "PureRead"
+params = []
+response = [
+    { name = "message", type = "string", description = "Always PONG" },
+]
+
+[commands.command_list]
+verb = "COMMAND"
+variant = "LIST"
+description = "List all supported commands for this engine"
+replica_behavior = "PureRead"
+params = []
+response = [
+    { name = "count", type = "integer", description = "Number of supported commands" },
+    { name = "commands", type = "array", description = "List of command verb strings" },
+]

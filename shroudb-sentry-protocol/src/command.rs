@@ -34,6 +34,12 @@ pub enum Command {
     /// Authenticate the connection.
     Auth { token: String },
 
+    /// Simple connectivity check — returns PONG.
+    Ping,
+
+    /// List all supported commands.
+    CommandList,
+
     /// Execute a batch of commands.
     Pipeline(Vec<Command>),
 }
@@ -52,6 +58,8 @@ pub fn command_verb(cmd: &Command) -> &'static str {
         Command::ConfigSet { .. } => "CONFIG",
         Command::ConfigList => "CONFIG",
         Command::Auth { .. } => "AUTH",
+        Command::Ping => "PING",
+        Command::CommandList => "COMMAND",
         Command::Pipeline(_) => "PIPELINE",
     }
 }
@@ -68,6 +76,8 @@ impl Command {
                 | Command::Health
                 | Command::ConfigGet { .. }
                 | Command::ConfigList
+                | Command::Ping
+                | Command::CommandList
         )
     }
 }
