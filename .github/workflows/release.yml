@@ -1,0 +1,30 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    uses: shroudb/.github/.github/workflows/rust-release.yml@main
+    permissions:
+      contents: write
+      packages: write
+    with:
+      product: "sentry"
+      server_package: "shroudb-sentry-server"
+      server_binary: "shroudb-sentry"
+      cli_package: "shroudb-sentry-cli"
+      cli_binary: "shroudb-sentry-cli"
+      docker_server_target: "shroudb-sentry"
+      docker_cli_target: "shroudb-sentry-cli"
+      crates: "shroudb-sentry-core,shroudb-sentry-engine,shroudb-sentry-protocol,shroudb-sentry-client,shroudb-sentry-server,shroudb-sentry-cli"
+    secrets:
+      REGISTRY_TOKEN: ${{ secrets.REGISTRY_TOKEN }}
+      GH_PAT: ${{ secrets.GH_PAT }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}

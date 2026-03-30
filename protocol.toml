@@ -1,0 +1,167 @@
+[protocol]
+name = "sentry"
+version = "1.0.0"
+default_tcp_port = 6799
+uri_schemes = ["shroudb-sentry://", "shroudb-sentry+tls://"]
+wire_format = "resp3"
+request_format = "array_of_bulk_strings"
+success_format = "json_bulk_string"
+error_format = "simple_error"
+
+[error_codes.NOTFOUND]
+description = "Policy not found"
+http_equivalent = 404
+
+[error_codes.EXISTS]
+description = "Policy already exists"
+http_equivalent = 409
+
+[error_codes.BADARG]
+description = "Invalid argument or malformed JSON"
+http_equivalent = 400
+
+[error_codes.DENIED]
+description = "Access denied — insufficient permissions"
+http_equivalent = 403
+
+[error_codes.AUTH_REQUIRED]
+description = "Authentication required"
+http_equivalent = 401
+
+[error_codes.NOKEY]
+description = "No active signing key available"
+http_equivalent = 500
+
+[error_codes.SIGNING]
+description = "Failed to sign decision"
+http_equivalent = 500
+
+[error_codes.INTERNAL]
+description = "Unexpected internal error"
+http_equivalent = 500
+
+# --- Types ---
+
+[types.policy_name]
+description = "Unique policy identifier (1-255 chars, alphanumeric + dash + underscore)"
+base = "string"
+validation = "^[a-zA-Z0-9_-]{1,255}$"
+
+[types.effect]
+description = "Policy effect: permit or deny"
+base = "string"
+enum = ["permit", "deny"]
+
+[types.json_value]
+description = "Arbitrary JSON object"
+base = "string"
+format = "json"
+
+# --- Commands ---
+
+[commands.AUTH]
+syntax = "AUTH <token>"
+description = "Authenticate the connection with a token"
+acl = "none"
+parameters = [
+    { name = "token", type = "string", required = true, description = "Authentication token" },
+]
+response = { status = "string" }
+
+[commands.POLICY_CREATE]
+syntax = "POLICY CREATE <name> <json>"
+description = "Create a new authorization policy"
+acl = "admin"
+parameters = [
+    { name = "name", type = "policy_name", required = true, description = "Unique policy name" },
+    { name = "json", type = "json_value", required = true, description = "Policy definition as JSON" },
+]
+response = { status = "string", name = "string", effect = "string", priority = "integer" }
+errors = ["BADARG", "EXISTS"]
+
+[commands.POLICY_GET]
+syntax = "POLICY GET <name>"
+description = "Get a policy by name"
+acl = "namespace:read"
+parameters = [
+    { name = "name", type = "policy_name", required = true, description = "Policy name" },
+]
+response = { status = "string", name = "string", description = "string", effect = "string", priority = "integer", created_at = "integer", updated_at = "integer" }
+errors = ["NOTFOUND"]
+
+[commands.POLICY_LIST]
+syntax = "POLICY LIST"
+description = "List all policy names"
+acl = "namespace:read"
+response = { status = "string", count = "integer", policies = "array" }
+
+[commands.POLICY_DELETE]
+syntax = "POLICY DELETE <name>"
+description = "Delete a policy"
+acl = "admin"
+parameters = [
+    { name = "name", type = "policy_name", required = true, description = "Policy name" },
+]
+response = { status = "string" }
+errors = ["NOTFOUND"]
+
+[commands.POLICY_UPDATE]
+syntax = "POLICY UPDATE <name> <json>"
+description = "Update an existing policy"
+acl = "admin"
+parameters = [
+    { name = "name", type = "policy_name", required = true, description = "Policy name" },
+    { name = "json", type = "json_value", required = true, description = "Updated policy definition as JSON" },
+]
+response = { status = "string", name = "string", effect = "string", priority = "integer", updated_at = "integer" }
+errors = ["NOTFOUND", "BADARG"]
+
+[commands.EVALUATE]
+syntax = "EVALUATE <json>"
+description = "Evaluate an authorization request against policies and return a signed decision"
+acl = "namespace:read"
+parameters = [
+    { name = "json", type = "json_value", required = true, description = "Evaluation request with principal, resource, and action" },
+]
+response = { status = "string", decision = "string", token = "string", matched_policy = "string", cache_until = "integer" }
+errors = ["BADARG", "NOKEY", "SIGNING"]
+
+[commands.KEY_ROTATE]
+syntax = "KEY ROTATE [FORCE] [DRYRUN]"
+description = "Rotate the signing key"
+acl = "admin"
+parameters = [
+    { name = "FORCE", type = "flag", required = false, description = "Force rotation regardless of key age" },
+    { name = "DRYRUN", type = "flag", required = false, description = "Preview rotation without applying" },
+]
+response = { status = "string", rotated = "boolean", key_version = "integer", previous_version = "integer" }
+
+[commands.KEY_INFO]
+syntax = "KEY INFO"
+description = "Get signing key metadata"
+acl = "none"
+response = { status = "string", algorithm = "string", rotation_days = "integer", drain_days = "integer", decision_ttl_secs = "integer", active_version = "integer", active_kid = "string", total_versions = "integer", jwks_keys = "integer" }
+
+[commands.JWKS]
+syntax = "JWKS"
+description = "Get the JSON Web Key Set for verifying decision tokens"
+acl = "none"
+response = { keys = "array" }
+
+[commands.HEALTH]
+syntax = "HEALTH"
+description = "Server health check"
+acl = "none"
+response = { status = "string", policy_count = "integer" }
+
+[commands.PING]
+syntax = "PING"
+description = "Connectivity check"
+acl = "none"
+response = "PONG"
+
+[commands.COMMAND_LIST]
+syntax = "COMMAND LIST"
+description = "List all supported commands"
+acl = "none"
+response = { status = "string", commands = "array" }

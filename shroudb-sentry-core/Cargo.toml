@@ -1,0 +1,18 @@
+[package]
+name = "shroudb-sentry-core"
+description = "Domain types for the Sentry authorization policy engine"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[dependencies]
+shroudb-acl.workspace = true
+shroudb-crypto.workspace = true
+
+serde.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true
