@@ -1,41 +1,12 @@
-use std::sync::Arc;
-
 use shroudb_sentry_core::signing::SigningAlgorithm;
 use shroudb_sentry_engine::engine::{SentryConfig, SentryEngine};
 use shroudb_sentry_protocol::commands::{SentryCommand, parse_command};
 use shroudb_sentry_protocol::dispatch::dispatch;
 use shroudb_sentry_protocol::response::SentryResponse;
-use shroudb_storage::{EmbeddedStore, MasterKeySource, StorageEngine, StorageEngineConfig};
-
-struct EphemeralKey;
-
-impl MasterKeySource for EphemeralKey {
-    fn source_name(&self) -> &str {
-        "test"
-    }
-
-    fn load<'a>(
-        &'a self,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<
-                    Output = Result<shroudb_crypto::SecretBytes, shroudb_storage::StorageError>,
-                > + Send
-                + 'a,
-        >,
-    > {
-        Box::pin(async { Ok(shroudb_crypto::SecretBytes::new(vec![0x42u8; 32])) })
-    }
-}
+use shroudb_storage::EmbeddedStore;
 
 async fn create_test_engine() -> SentryEngine<EmbeddedStore> {
-    let dir = tempfile::tempdir().unwrap().keep();
-    let config = StorageEngineConfig {
-        data_dir: dir,
-        ..Default::default()
-    };
-    let storage = StorageEngine::open(config, &EphemeralKey).await.unwrap();
-    let store = Arc::new(EmbeddedStore::new(Arc::new(storage), "sentry-test"));
+    let store = shroudb_storage::test_util::create_test_store("sentry-test").await;
 
     SentryEngine::new(
         store,

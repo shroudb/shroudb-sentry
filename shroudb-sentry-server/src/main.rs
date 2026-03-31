@@ -4,7 +4,7 @@ use clap::Parser;
 use shroudb_sentry_core::signing::SigningAlgorithm;
 use shroudb_sentry_engine::engine::{SentryConfig, SentryEngine};
 use shroudb_storage::{
-    ChainedMasterKeySource, EmbeddedStore, EnvMasterKey, FileMasterKey, MasterKeySource,
+    ChainedMasterKeySource, EmbeddedStore, EnvMasterKey, EphemeralKey, FileMasterKey,
     StorageEngine, StorageEngineConfig,
 };
 use tokio::net::TcpListener;
@@ -63,10 +63,10 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     // Disable core dumps (security: prevent key material leakage)
-    disable_core_dumps();
+    shroudb_crypto::disable_core_dumps();
 
     // Master key chain
-    let key_source: Box<dyn MasterKeySource> = Box::new(ChainedMasterKeySource::new(vec![
+    let key_source = Box::new(ChainedMasterKeySource::new(vec![
         Box::new(EnvMasterKey::new()),
         Box::new(FileMasterKey::new()),
         Box::new(EphemeralKey),
@@ -172,51 +172,4 @@ async fn main() -> anyhow::Result<()> {
     let _ = tcp_handle.await;
 
     Ok(())
-}
-
-fn disable_core_dumps() {
-    #[cfg(target_os = "linux")]
-    {
-        if unsafe { libc::prctl(libc::PR_SET_DUMPABLE, 0) } != 0 {
-            tracing::warn!("failed to disable core dumps via prctl");
-        }
-    }
-    #[cfg(target_os = "macos")]
-    {
-        let zero = libc::rlimit {
-            rlim_cur: 0,
-            rlim_max: 0,
-        };
-        if unsafe { libc::setrlimit(libc::RLIMIT_CORE, &zero) } != 0 {
-            tracing::warn!("failed to disable core dumps via setrlimit");
-        }
-    }
-}
-
-struct EphemeralKey;
-
-impl MasterKeySource for EphemeralKey {
-    fn source_name(&self) -> &str {
-        "ephemeral"
-    }
-
-    fn load<'a>(
-        &'a self,
-    ) -> std::pin::Pin<
-        Box<
-            dyn std::future::Future<
-                    Output = Result<shroudb_crypto::SecretBytes, shroudb_storage::StorageError>,
-                > + Send
-                + 'a,
-        >,
-    > {
-        Box::pin(async {
-            tracing::warn!("using ephemeral master key — data will not survive restart");
-            let rng = ring::rand::SystemRandom::new();
-            let mut bytes = vec![0u8; 32];
-            ring::rand::SecureRandom::fill(&rng, &mut bytes)
-                .map_err(|_| shroudb_storage::StorageError::Internal("RNG failed".into()))?;
-            Ok(shroudb_crypto::SecretBytes::new(bytes))
-        })
-    }
 }
