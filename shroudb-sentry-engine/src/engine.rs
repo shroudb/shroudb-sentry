@@ -200,3 +200,102 @@ fn unix_now() -> u64 {
         .unwrap_or_default()
         .as_secs()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use shroudb_acl::{PolicyEffect, PolicyPrincipal, PolicyResource};
+    use shroudb_sentry_core::matcher::*;
+
+    async fn setup() -> SentryEngine<shroudb_storage::EmbeddedStore> {
+        let store = shroudb_storage::test_util::create_test_store("sentry-test").await;
+        SentryEngine::new(store, SentryConfig::default())
+            .await
+            .unwrap()
+    }
+
+    fn make_request(principal_id: &str, resource_type: &str, action: &str) -> PolicyRequest {
+        PolicyRequest {
+            principal: PolicyPrincipal {
+                id: principal_id.into(),
+                roles: vec![],
+                claims: Default::default(),
+            },
+            resource: PolicyResource {
+                id: "res-1".into(),
+                resource_type: resource_type.into(),
+                attributes: Default::default(),
+            },
+            action: action.into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn concurrent_evaluate_during_policy_update() {
+        let engine = Arc::new(setup().await);
+
+        // Create a permit-all policy
+        let permit_all = Policy {
+            name: "allow-all".into(),
+            description: "permit everything".into(),
+            effect: PolicyEffect::Permit,
+            priority: 10,
+            principal: PrincipalMatcher::default(),
+            resource: ResourceMatcher::default(),
+            action: ActionMatcher::default(),
+            conditions: Conditions::default(),
+            created_at: 0,
+            updated_at: 0,
+        };
+        engine.policy_create(permit_all).await.unwrap();
+
+        let mut handles = Vec::new();
+
+        // Spawn 10 tasks that each evaluate the policy 5 times
+        for _ in 0..10u32 {
+            let eng = Arc::clone(&engine);
+            handles.push(tokio::spawn(async move {
+                let mut decisions = Vec::new();
+                for _ in 0..5u32 {
+                    let req = make_request("alice", "doc", "read");
+                    let result = eng.evaluate_request(&req).unwrap();
+                    decisions.push(result.decision);
+                }
+                decisions
+            }));
+        }
+
+        // Update the policy while evaluations are in flight: change effect to Deny
+        let deny_all = Policy {
+            name: "allow-all".into(),
+            description: "now denies everything".into(),
+            effect: PolicyEffect::Deny,
+            priority: 10,
+            principal: PrincipalMatcher::default(),
+            resource: ResourceMatcher::default(),
+            action: ActionMatcher::default(),
+            conditions: Conditions::default(),
+            created_at: 0,
+            updated_at: 0,
+        };
+        engine.policy_update("allow-all", deny_all).await.unwrap();
+
+        // Collect all results — no task should have panicked
+        let mut all_decisions = Vec::new();
+        for handle in handles {
+            let decisions = handle.await.unwrap();
+            all_decisions.extend(decisions);
+        }
+
+        assert_eq!(all_decisions.len(), 50);
+
+        // Every decision must be either Permit (old policy) or Deny (updated policy).
+        // No corrupted/partial state.
+        for decision in &all_decisions {
+            assert!(
+                *decision == PolicyEffect::Permit || *decision == PolicyEffect::Deny,
+                "unexpected decision: {decision:?}"
+            );
+        }
+    }
+}
