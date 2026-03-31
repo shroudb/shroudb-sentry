@@ -218,6 +218,39 @@ async fn tcp_error_responses() {
     assert!(err.is_err());
 }
 
+// ── Edge cases ────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_max_length_policy_name() {
+    let server = TestServer::start().await.expect("start server");
+    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+
+    // 255-char name is the maximum allowed
+    let long_name = "a".repeat(255);
+    let json = r#"{"effect":"permit","priority":1}"#;
+    let resp = client
+        .policy_create(&long_name, json)
+        .await
+        .expect("255-char policy name should be accepted");
+    assert_eq!(resp["name"].as_str().unwrap(), long_name);
+
+    // Verify it's retrievable
+    let info = client.policy_get(&long_name).await.unwrap();
+    assert_eq!(info.name, long_name);
+}
+
+#[tokio::test]
+async fn test_policy_name_too_long() {
+    let server = TestServer::start().await.expect("start server");
+    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+
+    // 256-char name exceeds the limit
+    let too_long = "a".repeat(256);
+    let json = r#"{"effect":"permit","priority":1}"#;
+    let err = client.policy_create(&too_long, json).await;
+    assert!(err.is_err(), "256-char policy name should be rejected");
+}
+
 // ── ACL integration tests ──────────────────────────────────────────
 
 #[tokio::test]
