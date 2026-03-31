@@ -45,7 +45,6 @@ impl Default for SentryConfig {
 pub struct SentryEngine<S: Store> {
     policies: PolicyManager<S>,
     signing: SigningManager<S>,
-    config: SentryConfig,
 }
 
 impl<S: Store> SentryEngine<S> {
@@ -68,11 +67,7 @@ impl<S: Store> SentryEngine<S> {
             )
             .await?;
 
-        Ok(Self {
-            policies,
-            signing,
-            config,
-        })
+        Ok(Self { policies, signing })
     }
 
     // --- Policy operations ---
@@ -162,11 +157,6 @@ impl<S: Store> SentryEngine<S> {
     /// Access the signing manager (for scheduler).
     pub fn signing_manager(&self) -> &SigningManager<S> {
         &self.signing
-    }
-
-    /// Access the engine config.
-    pub fn config(&self) -> &SentryConfig {
-        &self.config
     }
 
     /// Seed a policy if it doesn't already exist (for config-based seeding).
