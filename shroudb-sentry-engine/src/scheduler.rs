@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use shroudb_store::Store;
+use tokio::sync::watch;
 
 use crate::engine::SentryEngine;
 
@@ -9,15 +10,20 @@ use crate::engine::SentryEngine;
 pub fn start_scheduler<S: Store + 'static>(
     engine: Arc<SentryEngine<S>>,
     interval_secs: u64,
+    mut shutdown: watch::Receiver<bool>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(Duration::from_secs(interval_secs));
-        interval.tick().await; // skip first immediate tick
-
         loop {
-            interval.tick().await;
-            if let Err(e) = run_cycle(&engine).await {
-                tracing::warn!(error = %e, "scheduler cycle failed");
+            tokio::select! {
+                _ = tokio::time::sleep(Duration::from_secs(interval_secs)) => {
+                    if let Err(e) = run_cycle(&engine).await {
+                        tracing::warn!(error = %e, "scheduler cycle failed");
+                    }
+                }
+                _ = shutdown.changed() => {
+                    tracing::info!("sentry scheduler shutting down");
+                    break;
+                }
             }
         }
     })

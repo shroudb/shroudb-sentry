@@ -130,10 +130,14 @@ async fn main() -> anyhow::Result<()> {
         engine.seed_policy(policy).await?;
     }
 
+    // Graceful shutdown
+    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+
     // Start background scheduler
     let _scheduler = shroudb_sentry_engine::scheduler::start_scheduler(
         engine.clone(),
         cfg.engine.scheduler_interval_secs,
+        shutdown_rx.clone(),
     );
 
     // Auth
@@ -161,9 +165,6 @@ async fn main() -> anyhow::Result<()> {
         cfg.store.data_dir.display(),
         key_mode,
     );
-
-    // Graceful shutdown
-    let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
     let tcp_handle = tokio::spawn(tcp::run_tcp(listener, engine, token_validator, shutdown_rx));
 
