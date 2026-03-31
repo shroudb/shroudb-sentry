@@ -219,7 +219,7 @@ async fn engine_evaluate_returns_signed_jwt() {
         action: "read".into(),
     };
 
-    let signed = engine.evaluate(&request).unwrap();
+    let signed = engine.evaluate_request(&request).unwrap();
     assert_eq!(signed.decision, shroudb_acl::PolicyEffect::Permit);
     assert!(!signed.token.is_empty());
     assert!(signed.token.contains('.')); // JWT format: header.payload.signature
@@ -245,7 +245,7 @@ async fn engine_evaluate_default_deny() {
         action: "read".into(),
     };
 
-    let signed = engine.evaluate(&request).unwrap();
+    let signed = engine.evaluate_request(&request).unwrap();
     assert_eq!(signed.decision, shroudb_acl::PolicyEffect::Deny);
     assert!(signed.matched_policy.is_none());
 }
@@ -276,14 +276,14 @@ async fn engine_evaluate_after_policy_delete() {
     };
 
     // Initially permitted
-    let signed = engine.evaluate(&request).unwrap();
+    let signed = engine.evaluate_request(&request).unwrap();
     assert_eq!(signed.decision, shroudb_acl::PolicyEffect::Permit);
 
     // Delete the policy
     engine.policy_delete("temp-permit").await.unwrap();
 
     // Now denied (default)
-    let signed = engine.evaluate(&request).unwrap();
+    let signed = engine.evaluate_request(&request).unwrap();
     assert_eq!(signed.decision, shroudb_acl::PolicyEffect::Deny);
 }
 

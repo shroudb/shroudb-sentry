@@ -181,7 +181,7 @@ fn handle_evaluate<S: Store>(engine: &SentryEngine<S>, request_json: &str) -> Se
         Err(e) => return SentryResponse::error(e.to_string()),
     };
 
-    match engine.evaluate(&request) {
+    match engine.evaluate_request(&request) {
         Ok(signed) => SentryResponse::ok(serde_json::json!({
             "status": "ok",
             "decision": signed.decision.to_string(),

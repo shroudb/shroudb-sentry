@@ -1,6 +1,8 @@
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 
-use shroudb_acl::PolicyRequest;
+use shroudb_acl::{AclError, PolicyDecision, PolicyEvaluator, PolicyRequest};
 use shroudb_store::Store;
 
 use shroudb_sentry_core::decision::SignedDecision;
@@ -121,7 +123,7 @@ impl<S: Store> SentryEngine<S> {
 
     /// Evaluate an authorization request against all policies and return
     /// a cryptographically signed decision.
-    pub fn evaluate(&self, request: &PolicyRequest) -> Result<SignedDecision, SentryError> {
+    pub fn evaluate_request(&self, request: &PolicyRequest) -> Result<SignedDecision, SentryError> {
         let policies = self.policies.all_sorted();
         let decision = evaluator::evaluate_policies(&policies, request);
         let keyring = self.signing.get("default")?;
@@ -170,6 +172,25 @@ impl<S: Store> SentryEngine<S> {
     /// Seed a policy if it doesn't already exist (for config-based seeding).
     pub async fn seed_policy(&self, policy: Policy) -> Result<(), SentryError> {
         self.policies.seed_if_absent(policy).await
+    }
+}
+
+impl<S: Store> PolicyEvaluator for SentryEngine<S> {
+    fn evaluate(
+        &self,
+        request: &PolicyRequest,
+    ) -> Pin<Box<dyn Future<Output = Result<PolicyDecision, AclError>> + Send + '_>> {
+        // evaluate_request is synchronous — compute eagerly, wrap result in ready future.
+        let result = self
+            .evaluate_request(request)
+            .map(|signed| PolicyDecision {
+                effect: signed.decision,
+                matched_policy: signed.matched_policy,
+                token: Some(signed.token),
+                cache_until: Some(signed.cache_until),
+            })
+            .map_err(|e| AclError::Internal(format!("sentry evaluation failed: {e}")));
+        Box::pin(std::future::ready(result))
     }
 }
 
