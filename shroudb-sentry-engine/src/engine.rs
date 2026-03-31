@@ -1,8 +1,11 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Instant;
 
 use shroudb_acl::{AclError, PolicyDecision, PolicyEvaluator, PolicyRequest};
+use shroudb_chronicle_core::event::{Engine as AuditEngine, Event, EventResult};
+use shroudb_chronicle_core::ops::ChronicleOps;
 use shroudb_store::Store;
 
 use shroudb_sentry_core::decision::SignedDecision;
@@ -45,11 +48,16 @@ impl Default for SentryConfig {
 pub struct SentryEngine<S: Store> {
     policies: PolicyManager<S>,
     signing: SigningManager<S>,
+    chronicle: Option<Arc<dyn ChronicleOps>>,
 }
 
 impl<S: Store> SentryEngine<S> {
     /// Create and initialize a new Sentry engine.
-    pub async fn new(store: Arc<S>, config: SentryConfig) -> Result<Self, SentryError> {
+    pub async fn new(
+        store: Arc<S>,
+        config: SentryConfig,
+        chronicle: Option<Arc<dyn ChronicleOps>>,
+    ) -> Result<Self, SentryError> {
         let policies = PolicyManager::new(store.clone());
         let signing = SigningManager::new(store);
 
@@ -67,14 +75,49 @@ impl<S: Store> SentryEngine<S> {
             )
             .await?;
 
-        Ok(Self { policies, signing })
+        Ok(Self {
+            policies,
+            signing,
+            chronicle,
+        })
+    }
+
+    /// Emit an audit event to Chronicle. Warn-only on failure — Sentry is
+    /// infrastructure and must not fail because auditing is unavailable.
+    async fn emit_audit_event(
+        &self,
+        operation: &str,
+        resource: &str,
+        result: EventResult,
+        actor: Option<&str>,
+        start: Instant,
+    ) {
+        let Some(chronicle) = &self.chronicle else {
+            return;
+        };
+        let mut event = Event::new(
+            AuditEngine::Sentry,
+            operation.to_string(),
+            resource.to_string(),
+            result,
+            actor.unwrap_or("anonymous").to_string(),
+        );
+        event.duration_ms = start.elapsed().as_millis() as u64;
+        if let Err(e) = chronicle.record(event).await {
+            tracing::warn!(operation, resource, error = %e, "failed to emit audit event");
+        }
     }
 
     // --- Policy operations ---
 
     /// Create a new policy.
     pub async fn policy_create(&self, policy: Policy) -> Result<Policy, SentryError> {
-        self.policies.create(policy).await
+        let start = Instant::now();
+        let name = policy.name.clone();
+        let result = self.policies.create(policy).await?;
+        self.emit_audit_event("POLICY_CREATE", &name, EventResult::Ok, None, start)
+            .await;
+        Ok(result)
     }
 
     /// Get a policy by name.
@@ -89,13 +132,19 @@ impl<S: Store> SentryEngine<S> {
 
     /// Delete a policy.
     pub async fn policy_delete(&self, name: &str) -> Result<(), SentryError> {
-        self.policies.delete(name).await
+        let start = Instant::now();
+        self.policies.delete(name).await?;
+        self.emit_audit_event("POLICY_DELETE", name, EventResult::Ok, None, start)
+            .await;
+        Ok(())
     }
 
     /// Update a policy.
     pub async fn policy_update(&self, name: &str, updates: Policy) -> Result<Policy, SentryError> {
+        let start = Instant::now();
         let now = unix_now();
-        self.policies
+        let result = self
+            .policies
             .update(name, |p| {
                 p.description = updates.description;
                 p.effect = updates.effect;
@@ -106,7 +155,10 @@ impl<S: Store> SentryEngine<S> {
                 p.conditions = updates.conditions;
                 p.updated_at = now;
             })
-            .await
+            .await?;
+        self.emit_audit_event("POLICY_UPDATE", name, EventResult::Ok, None, start)
+            .await;
+        Ok(result)
     }
 
     /// Number of loaded policies.
@@ -119,17 +171,46 @@ impl<S: Store> SentryEngine<S> {
     /// Evaluate an authorization request against all policies and return
     /// a cryptographically signed decision.
     pub fn evaluate_request(&self, request: &PolicyRequest) -> Result<SignedDecision, SentryError> {
+        let start = Instant::now();
         let policies = self.policies.all_sorted();
         let decision = evaluator::evaluate_policies(&policies, request);
         let keyring = self.signing.get("default")?;
-        evaluator::sign_decision(&decision, request, &keyring)
+        let signed = evaluator::sign_decision(&decision, request, &keyring)?;
+
+        // Fire-and-forget audit — evaluate_request is sync so we spawn.
+        if let Some(chronicle) = self.chronicle.clone() {
+            let resource = request.resource.id.clone();
+            let actor = request.principal.id.clone();
+            let duration_ms = start.elapsed().as_millis() as u64;
+            tokio::spawn(async move {
+                let mut event = Event::new(
+                    AuditEngine::Sentry,
+                    "EVALUATE".to_string(),
+                    resource.clone(),
+                    EventResult::Ok,
+                    actor,
+                );
+                event.duration_ms = duration_ms;
+                if let Err(e) = chronicle.record(event).await {
+                    tracing::warn!(resource, error = %e, "failed to emit audit event");
+                }
+            });
+        }
+
+        Ok(signed)
     }
 
     // --- Signing key operations ---
 
     /// Rotate the signing key.
     pub async fn key_rotate(&self, force: bool, dryrun: bool) -> Result<RotateResult, SentryError> {
-        self.signing.rotate("default", force, dryrun).await
+        let start = Instant::now();
+        let result = self.signing.rotate("default", force, dryrun).await?;
+        if result.rotated && !dryrun {
+            self.emit_audit_event("KEY_ROTATE", "default", EventResult::Ok, None, start)
+                .await;
+        }
+        Ok(result)
     }
 
     /// Get signing key info.
@@ -199,7 +280,7 @@ mod tests {
 
     async fn setup() -> SentryEngine<shroudb_storage::EmbeddedStore> {
         let store = shroudb_storage::test_util::create_test_store("sentry-test").await;
-        SentryEngine::new(store, SentryConfig::default())
+        SentryEngine::new(store, SentryConfig::default(), None)
             .await
             .unwrap()
     }

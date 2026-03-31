@@ -14,6 +14,7 @@ async fn create_test_engine() -> SentryEngine<EmbeddedStore> {
             signing_algorithm: SigningAlgorithm::ES256,
             ..Default::default()
         },
+        None,
     )
     .await
     .unwrap()

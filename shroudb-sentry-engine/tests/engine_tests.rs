@@ -13,7 +13,7 @@ async fn create_test_engine() -> SentryEngine<EmbeddedStore> {
         scheduler_interval_secs: 3600,
     };
 
-    SentryEngine::new(store, sentry_config).await.unwrap()
+    SentryEngine::new(store, sentry_config, None).await.unwrap()
 }
 
 // ── PolicyManager via Engine ────────────────────────────────────────

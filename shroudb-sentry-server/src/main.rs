@@ -98,7 +98,7 @@ async fn main() -> anyhow::Result<()> {
         decision_ttl_secs: cfg.engine.decision_ttl_secs,
         scheduler_interval_secs: cfg.engine.scheduler_interval_secs,
     };
-    let engine = Arc::new(SentryEngine::new(store, sentry_config).await?);
+    let engine = Arc::new(SentryEngine::new(store, sentry_config, None).await?);
 
     // Seed policies from config
     for (name, seed) in &cfg.policies {
