@@ -82,8 +82,9 @@ impl<S: Store> SentryEngine<S> {
         })
     }
 
-    /// Emit an audit event to Chronicle. Warn-only on failure — Sentry is
-    /// infrastructure and must not fail because auditing is unavailable.
+    /// Emit an audit event to Chronicle. If chronicle is not configured, this
+    /// is a no-op. If chronicle is configured but unreachable, returns an error
+    /// so security-critical callers can fail closed.
     async fn emit_audit_event(
         &self,
         operation: &str,
@@ -91,9 +92,9 @@ impl<S: Store> SentryEngine<S> {
         result: EventResult,
         actor: Option<&str>,
         start: Instant,
-    ) {
+    ) -> Result<(), SentryError> {
         let Some(chronicle) = &self.chronicle else {
-            return;
+            return Ok(());
         };
         let mut event = Event::new(
             AuditEngine::Sentry,
@@ -103,9 +104,11 @@ impl<S: Store> SentryEngine<S> {
             actor.unwrap_or("anonymous").to_string(),
         );
         event.duration_ms = start.elapsed().as_millis() as u64;
-        if let Err(e) = chronicle.record(event).await {
-            tracing::warn!(operation, resource, error = %e, "failed to emit audit event");
-        }
+        chronicle
+            .record(event)
+            .await
+            .map_err(|e| SentryError::Internal(format!("audit failed: {e}")))?;
+        Ok(())
     }
 
     // --- Policy operations ---
@@ -116,7 +119,7 @@ impl<S: Store> SentryEngine<S> {
         let name = policy.name.clone();
         let result = self.policies.create(policy).await?;
         self.emit_audit_event("POLICY_CREATE", &name, EventResult::Ok, None, start)
-            .await;
+            .await?;
         Ok(result)
     }
 
@@ -135,7 +138,7 @@ impl<S: Store> SentryEngine<S> {
         let start = Instant::now();
         self.policies.delete(name).await?;
         self.emit_audit_event("POLICY_DELETE", name, EventResult::Ok, None, start)
-            .await;
+            .await?;
         Ok(())
     }
 
@@ -157,7 +160,7 @@ impl<S: Store> SentryEngine<S> {
             })
             .await?;
         self.emit_audit_event("POLICY_UPDATE", name, EventResult::Ok, None, start)
-            .await;
+            .await?;
         Ok(result)
     }
 
@@ -208,7 +211,7 @@ impl<S: Store> SentryEngine<S> {
         let result = self.signing.rotate("default", force, dryrun).await?;
         if result.rotated && !dryrun {
             self.emit_audit_event("KEY_ROTATE", "default", EventResult::Ok, None, start)
-                .await;
+                .await?;
         }
         Ok(result)
     }
