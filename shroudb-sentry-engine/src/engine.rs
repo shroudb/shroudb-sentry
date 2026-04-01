@@ -437,6 +437,40 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn test_corrupt_policy_data_handled() {
+        let store = shroudb_storage::test_util::create_test_store("sentry-test").await;
+
+        // Create the namespace manually and write invalid JSON bytes
+        store
+            .namespace_create("sentry.policies", shroudb_store::NamespaceConfig::default())
+            .await
+            .unwrap();
+        store
+            .put(
+                "sentry.policies",
+                b"corrupt-policy",
+                b"not valid json {{{",
+                None,
+            )
+            .await
+            .unwrap();
+
+        // SentryEngine::new calls policies.init() which should skip the corrupt
+        // entry with a warning rather than panic. The engine should initialize
+        // successfully with zero policies loaded.
+        let engine = SentryEngine::new(store, SentryConfig::default(), None)
+            .await
+            .unwrap();
+
+        // The corrupt entry should have been skipped, not loaded
+        assert_eq!(engine.policy_count(), 0, "corrupt policy should be skipped");
+        assert!(
+            engine.policy_list().is_empty(),
+            "no policies should be loaded from corrupt data"
+        );
+    }
+
+    #[tokio::test]
     async fn test_self_authorization_permits_when_no_policies() {
         let engine = setup().await;
 
