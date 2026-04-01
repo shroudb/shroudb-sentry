@@ -1222,9 +1222,9 @@ dependencies = [
 
 [[package]]
 name = "shroudb-chronicle-core"
-version = "1.2.6"
+version = "1.2.7"
 source = "sparse+https://crates.shroudb.dev/api/v1/crates/"
-checksum = "f2c63b7abc2d4b1323c46fb968427c320072799315f682c9acbabc447c6e28ab"
+checksum = "fe7d48fb2340af779aa1dcfc64f15db8de863c8b1c3ec6cf3431006ad819832d"
 dependencies = [
  "serde",
  "serde_json",
@@ -1268,7 +1268,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-cli"
-version = "1.4.5"
+version = "1.4.6"
 dependencies = [
  "anyhow",
  "clap",
@@ -1279,7 +1279,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-client"
-version = "1.4.5"
+version = "1.4.6"
 dependencies = [
  "serde_json",
  "thiserror",
@@ -1288,7 +1288,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-core"
-version = "1.4.5"
+version = "1.4.6"
 dependencies = [
  "serde",
  "serde_json",
@@ -1299,7 +1299,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-engine"
-version = "1.4.5"
+version = "1.4.6"
 dependencies = [
  "base64",
  "dashmap",
@@ -1320,7 +1320,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-protocol"
-version = "1.4.5"
+version = "1.4.6"
 dependencies = [
  "base64",
  "serde",
@@ -1335,7 +1335,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-server"
-version = "1.4.5"
+version = "1.4.6"
 dependencies = [
  "anyhow",
  "base64",
