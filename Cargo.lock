@@ -1343,17 +1343,30 @@ dependencies = [
  "serde",
  "serde_json",
  "shroudb-acl",
- "shroudb-crypto",
  "shroudb-protocol-wire",
  "shroudb-sentry-client",
  "shroudb-sentry-core",
  "shroudb-sentry-engine",
  "shroudb-sentry-protocol",
+ "shroudb-server-bootstrap",
  "shroudb-storage",
  "shroudb-store",
  "tempfile",
  "tokio",
  "toml",
+ "tracing",
+]
+
+[[package]]
+name = "shroudb-server-bootstrap"
+version = "0.1.0"
+source = "sparse+https://crates.shroudb.dev/api/v1/crates/"
+checksum = "2e04864c6d1cb99aa6249465ea2baa6343bf30bf69b9432eb017e755ce774d10"
+dependencies = [
+ "anyhow",
+ "shroudb-crypto",
+ "shroudb-storage",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]

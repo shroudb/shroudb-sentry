@@ -3,10 +3,6 @@ use std::sync::Arc;
 use clap::Parser;
 use shroudb_sentry_core::signing::SigningAlgorithm;
 use shroudb_sentry_engine::engine::{SentryConfig, SentryEngine};
-use shroudb_storage::{
-    ChainedMasterKeySource, EmbeddedStore, EnvMasterKey, EphemeralKey, FileMasterKey,
-    StorageEngine, StorageEngineConfig,
-};
 use tokio::net::TcpListener;
 
 mod config;
@@ -52,36 +48,17 @@ async fn main() -> anyhow::Result<()> {
         cfg.server.log_level = Some(cli.log_level.clone());
     }
 
-    // Setup logging
+    // Bootstrap: logging + core dumps + key source
     let log_level = cfg.server.log_level.as_deref().unwrap_or("info");
-    tracing_subscriber::fmt()
-        .json()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new(log_level)),
-        )
-        .init();
-
-    // Disable core dumps (security: prevent key material leakage)
-    shroudb_crypto::disable_core_dumps();
-
-    // Master key chain
-    let key_source = Box::new(ChainedMasterKeySource::new(vec![
-        Box::new(EnvMasterKey::new()),
-        Box::new(FileMasterKey::new()),
-        Box::new(EphemeralKey),
-    ]));
+    let key_source = shroudb_server_bootstrap::bootstrap(log_level);
 
     // Validate store config
     cfg.store.validate()?;
 
     // Storage engine
-    let storage_config = StorageEngineConfig {
-        data_dir: cfg.store.data_dir.clone(),
-        ..Default::default()
-    };
-    let storage_engine = StorageEngine::open(storage_config, key_source.as_ref()).await?;
-    let store = Arc::new(EmbeddedStore::new(Arc::new(storage_engine), "sentry"));
+    let storage =
+        shroudb_server_bootstrap::open_storage(&cfg.store.data_dir, key_source.as_ref()).await?;
+    let store = Arc::new(shroudb_storage::EmbeddedStore::new(storage, "sentry"));
 
     // Parse signing algorithm
     let signing_algorithm: SigningAlgorithm = cfg
@@ -146,30 +123,18 @@ async fn main() -> anyhow::Result<()> {
     // TCP listener
     let listener = TcpListener::bind(cfg.server.tcp_bind).await?;
 
-    // Startup banner
-    let key_mode = if std::env::var("SHROUDB_MASTER_KEY").is_ok()
-        || std::env::var("SHROUDB_MASTER_KEY_FILE").is_ok()
-    {
-        "configured"
-    } else {
-        "ephemeral (dev mode)"
-    };
-    eprintln!(
-        "Sentry v{}\n\
-         \u{251c}\u{2500} tcp:     {}\n\
-         \u{251c}\u{2500} data:    {}\n\
-         \u{2514}\u{2500} key:     {}\n\n\
-         Ready.",
+    // Banner
+    shroudb_server_bootstrap::print_banner(
+        "Sentry",
         env!("CARGO_PKG_VERSION"),
-        cfg.server.tcp_bind,
-        cfg.store.data_dir.display(),
-        key_mode,
+        &cfg.server.tcp_bind.to_string(),
+        &cfg.store.data_dir,
     );
 
     let tcp_handle = tokio::spawn(tcp::run_tcp(listener, engine, token_validator, shutdown_rx));
 
-    tokio::signal::ctrl_c().await?;
-    let _ = shutdown_tx.send(true);
+    // Wait for shutdown
+    shroudb_server_bootstrap::wait_for_shutdown(shutdown_tx).await?;
     let _ = tcp_handle.await;
 
     Ok(())
