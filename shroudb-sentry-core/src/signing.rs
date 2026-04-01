@@ -1,3 +1,5 @@
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 /// Supported JWT signing algorithms.
@@ -99,7 +101,7 @@ impl std::fmt::Display for KeyState {
 }
 
 /// A single version of a signing key.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct SigningKeyVersion {
     /// Incrementing version number.
     pub version: u32,
@@ -123,6 +125,28 @@ pub struct SigningKeyVersion {
     /// Unix timestamp when this key was retired.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub retired_at: Option<u64>,
+}
+
+impl fmt::Debug for SigningKeyVersion {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SigningKeyVersion")
+            .field("version", &self.version)
+            .field("state", &self.state)
+            .field(
+                "private_key",
+                &match &self.private_key {
+                    Some(_) => "[REDACTED]",
+                    None => "None",
+                },
+            )
+            .field("public_key", &self.public_key)
+            .field("kid", &self.kid)
+            .field("created_at", &self.created_at)
+            .field("activated_at", &self.activated_at)
+            .field("draining_since", &self.draining_since)
+            .field("retired_at", &self.retired_at)
+            .finish()
+    }
 }
 
 /// A signing keyring that manages versioned signing keys.
@@ -386,5 +410,26 @@ mod tests {
         assert!(!KeyState::Draining.can_transition_to(KeyState::Active));
         assert!(!KeyState::Retired.can_transition_to(KeyState::Draining));
         assert!(!KeyState::Retired.can_transition_to(KeyState::Staged));
+    }
+
+    #[test]
+    fn debug_redacts_private_key() {
+        let skv = SigningKeyVersion {
+            version: 1,
+            state: KeyState::Active,
+            private_key: Some("secret".into()),
+            public_key: "pub".into(),
+            kid: "v1".into(),
+            created_at: 100,
+            activated_at: Some(100),
+            draining_since: None,
+            retired_at: None,
+        };
+        let debug = format!("{:?}", skv);
+        assert!(
+            debug.contains("[REDACTED]"),
+            "expected [REDACTED] in: {debug}"
+        );
+        assert!(!debug.contains("secret"), "private key leaked in: {debug}");
     }
 }
