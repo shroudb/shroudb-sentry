@@ -42,7 +42,9 @@ pub struct TestPolicySeed {
 
 impl TestServer {
     pub async fn start() -> Option<Self> {
-        Self::start_with_config(TestServerConfig::default()).await
+        // Default config includes a permit-all seed so that
+        // self-authorization does not block policy mutations in tests
+        Self::start_with_config(TestServerConfig::with_self_auth_permit()).await
     }
 
     pub async fn start_with_config(config: TestServerConfig) -> Option<Self> {
@@ -179,6 +181,25 @@ fn generate_config(tcp_bind: &str, config: &TestServerConfig) -> String {
     toml
 }
 
+impl TestServerConfig {
+    /// Default config with a high-priority permit policy scoped to
+    /// sentry.policies so self-authorization permits policy mutations
+    /// in tests without affecting general evaluation results.
+    pub fn with_self_auth_permit() -> Self {
+        TestServerConfig {
+            policies: vec![TestPolicySeed {
+                name: "self-auth-permit".to_string(),
+                effect: "permit".to_string(),
+                priority: 1000,
+                principal_roles: vec![],
+                resource_type: "sentry.policies".to_string(),
+                action_names: vec![],
+            }],
+            ..Default::default()
+        }
+    }
+}
+
 pub fn auth_server_config() -> TestServerConfig {
     TestServerConfig {
         tokens: vec![
@@ -216,6 +237,13 @@ pub fn auth_server_config() -> TestServerConfig {
                 }],
             },
         ],
-        policies: vec![],
+        policies: vec![TestPolicySeed {
+            name: "self-auth-permit".to_string(),
+            effect: "permit".to_string(),
+            priority: 1000,
+            principal_roles: vec![],
+            resource_type: "sentry.policies".to_string(),
+            action_names: vec![],
+        }],
     }
 }

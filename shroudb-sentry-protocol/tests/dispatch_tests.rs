@@ -77,6 +77,22 @@ async fn dispatch_command_list() {
 async fn dispatch_policy_lifecycle() {
     let engine = create_test_engine().await;
 
+    // Seed a high-priority permit for sentry.policies so self-authorization
+    // passes for mutations in this test (seed bypasses self-authorization)
+    engine
+        .seed_policy(shroudb_sentry_core::policy::Policy {
+            name: "self-auth-permit".into(),
+            effect: shroudb_acl::PolicyEffect::Permit,
+            priority: 1000,
+            resource: shroudb_sentry_core::matcher::ResourceMatcher {
+                resource_type: "sentry.policies".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
     // Create
     let cmd = parse_command(&[
         "POLICY",
@@ -95,11 +111,11 @@ async fn dispatch_policy_lifecycle() {
     assert_ok(&resp);
     assert_eq!(get_json(&resp)["effect"].as_str().unwrap(), "permit");
 
-    // List
+    // List (2 policies: self-auth-permit + test-pol)
     let cmd = parse_command(&["POLICY", "LIST"]).unwrap();
     let resp = dispatch(&engine, cmd, None).await;
     assert_ok(&resp);
-    assert_eq!(get_json(&resp)["count"].as_u64().unwrap(), 1);
+    assert_eq!(get_json(&resp)["count"].as_u64().unwrap(), 2);
 
     // Update
     let cmd = parse_command(&[

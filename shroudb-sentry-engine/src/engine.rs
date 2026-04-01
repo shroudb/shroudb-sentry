@@ -3,7 +3,10 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
-use shroudb_acl::{AclError, PolicyDecision, PolicyEvaluator, PolicyRequest};
+use shroudb_acl::{
+    AclError, PolicyDecision, PolicyEffect, PolicyEvaluator, PolicyPrincipal, PolicyRequest,
+    PolicyResource,
+};
 use shroudb_chronicle_core::event::{Engine as AuditEngine, Event, EventResult};
 use shroudb_chronicle_core::ops::ChronicleOps;
 use shroudb_store::Store;
@@ -111,14 +114,65 @@ impl<S: Store> SentryEngine<S> {
         Ok(())
     }
 
+    // --- Self-authorization ---
+
+    /// Evaluate whether a policy mutation is permitted.
+    ///
+    /// Bootstrap rule: if no policies exist yet, the operation is permitted
+    /// unconditionally so the first policy can be created.
+    ///
+    /// Once policies exist, the request is evaluated against them. If no
+    /// policy explicitly permits the operation, the default-deny applies
+    /// and the mutation is rejected.
+    fn authorize_policy_mutation(
+        &self,
+        policy_name: &str,
+        action: &str,
+        actor: &str,
+    ) -> Result<(), SentryError> {
+        if self.policies.count() == 0 {
+            return Ok(());
+        }
+
+        let request = PolicyRequest {
+            principal: PolicyPrincipal {
+                id: actor.to_string(),
+                roles: vec![],
+                claims: std::collections::HashMap::from([("sub".to_string(), actor.to_string())]),
+            },
+            resource: PolicyResource {
+                id: format!("sentry.policies.{policy_name}"),
+                resource_type: "sentry.policies".to_string(),
+                attributes: Default::default(),
+            },
+            action: action.to_string(),
+        };
+
+        let policies = self.policies.all_sorted();
+        let decision = evaluator::evaluate_policies(&policies, &request);
+
+        if decision.effect == PolicyEffect::Deny {
+            return Err(SentryError::AccessDenied(format!(
+                "{action} on sentry.policies.{policy_name} denied for {actor}{}",
+                decision
+                    .matched_policy
+                    .map(|p| format!(" by policy '{p}'"))
+                    .unwrap_or_default()
+            )));
+        }
+
+        Ok(())
+    }
+
     // --- Policy operations ---
 
     /// Create a new policy.
-    pub async fn policy_create(&self, policy: Policy) -> Result<Policy, SentryError> {
+    pub async fn policy_create(&self, policy: Policy, actor: &str) -> Result<Policy, SentryError> {
         let start = Instant::now();
         let name = policy.name.clone();
+        self.authorize_policy_mutation(&name, "create", actor)?;
         let result = self.policies.create(policy).await?;
-        self.emit_audit_event("POLICY_CREATE", &name, EventResult::Ok, None, start)
+        self.emit_audit_event("POLICY_CREATE", &name, EventResult::Ok, Some(actor), start)
             .await?;
         Ok(result)
     }
@@ -134,17 +188,24 @@ impl<S: Store> SentryEngine<S> {
     }
 
     /// Delete a policy.
-    pub async fn policy_delete(&self, name: &str) -> Result<(), SentryError> {
+    pub async fn policy_delete(&self, name: &str, actor: &str) -> Result<(), SentryError> {
         let start = Instant::now();
+        self.authorize_policy_mutation(name, "delete", actor)?;
         self.policies.delete(name).await?;
-        self.emit_audit_event("POLICY_DELETE", name, EventResult::Ok, None, start)
+        self.emit_audit_event("POLICY_DELETE", name, EventResult::Ok, Some(actor), start)
             .await?;
         Ok(())
     }
 
     /// Update a policy.
-    pub async fn policy_update(&self, name: &str, updates: Policy) -> Result<Policy, SentryError> {
+    pub async fn policy_update(
+        &self,
+        name: &str,
+        updates: Policy,
+        actor: &str,
+    ) -> Result<Policy, SentryError> {
         let start = Instant::now();
+        self.authorize_policy_mutation(name, "update", actor)?;
         let now = unix_now();
         let result = self
             .policies
@@ -159,7 +220,7 @@ impl<S: Store> SentryEngine<S> {
                 p.updated_at = now;
             })
             .await?;
-        self.emit_audit_event("POLICY_UPDATE", name, EventResult::Ok, None, start)
+        self.emit_audit_event("POLICY_UPDATE", name, EventResult::Ok, Some(actor), start)
             .await?;
         Ok(result)
     }
@@ -278,7 +339,6 @@ fn unix_now() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use shroudb_acl::{PolicyEffect, PolicyPrincipal, PolicyResource};
     use shroudb_sentry_core::matcher::*;
 
     async fn setup() -> SentryEngine<shroudb_storage::EmbeddedStore> {
@@ -321,7 +381,7 @@ mod tests {
             created_at: 0,
             updated_at: 0,
         };
-        engine.policy_create(permit_all).await.unwrap();
+        engine.policy_create(permit_all, "admin").await.unwrap();
 
         let mut handles = Vec::new();
 
@@ -352,7 +412,10 @@ mod tests {
             created_at: 0,
             updated_at: 0,
         };
-        engine.policy_update("allow-all", deny_all).await.unwrap();
+        engine
+            .policy_update("allow-all", deny_all, "admin")
+            .await
+            .unwrap();
 
         // Collect all results — no task should have panicked
         let mut all_decisions = Vec::new();
@@ -371,5 +434,116 @@ mod tests {
                 "unexpected decision: {decision:?}"
             );
         }
+    }
+
+    #[tokio::test]
+    async fn test_self_authorization_permits_when_no_policies() {
+        let engine = setup().await;
+
+        // With an empty policy store, bootstrap allows any actor to create
+        assert_eq!(engine.policy_count(), 0);
+
+        let policy = Policy {
+            name: "first-policy".into(),
+            description: "bootstrap policy".into(),
+            effect: PolicyEffect::Permit,
+            priority: 100,
+            principal: PrincipalMatcher::default(),
+            resource: ResourceMatcher::default(),
+            action: ActionMatcher::default(),
+            conditions: Conditions::default(),
+            created_at: 0,
+            updated_at: 0,
+        };
+
+        let result = engine.policy_create(policy, "any-actor").await;
+        assert!(
+            result.is_ok(),
+            "bootstrap create should succeed: {result:?}"
+        );
+        assert_eq!(engine.policy_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_self_authorization_denies_unauthorized_mutation() {
+        let engine = setup().await;
+
+        // Bootstrap: create a permit-all policy so we can create more policies
+        let permit_all = Policy {
+            name: "permit-all".into(),
+            description: "allow everything during setup".into(),
+            effect: PolicyEffect::Permit,
+            priority: 1,
+            principal: PrincipalMatcher::default(),
+            resource: ResourceMatcher::default(),
+            action: ActionMatcher::default(),
+            conditions: Conditions::default(),
+            created_at: 0,
+            updated_at: 0,
+        };
+        engine.policy_create(permit_all, "admin").await.unwrap();
+
+        // Create a higher-priority deny policy targeting "evil-actor" on
+        // sentry.policies resources
+        let deny_evil = Policy {
+            name: "deny-evil-policy-mutations".into(),
+            description: "block evil-actor from policy mutations".into(),
+            effect: PolicyEffect::Deny,
+            priority: 100,
+            principal: PrincipalMatcher {
+                roles: vec![],
+                claims: std::collections::HashMap::from([(
+                    "sub".to_string(),
+                    "evil-actor".to_string(),
+                )]),
+            },
+            resource: ResourceMatcher {
+                resource_type: "sentry.policies".into(),
+                ..Default::default()
+            },
+            action: ActionMatcher::default(),
+            conditions: Conditions::default(),
+            created_at: 0,
+            updated_at: 0,
+        };
+        engine.policy_create(deny_evil, "admin").await.unwrap();
+
+        // evil-actor tries to create a policy -- should be denied
+        let new_policy = Policy {
+            name: "evil-policy".into(),
+            description: "should not be created".into(),
+            effect: PolicyEffect::Permit,
+            priority: 999,
+            principal: PrincipalMatcher::default(),
+            resource: ResourceMatcher::default(),
+            action: ActionMatcher::default(),
+            conditions: Conditions::default(),
+            created_at: 0,
+            updated_at: 0,
+        };
+        let result = engine.policy_create(new_policy, "evil-actor").await;
+        assert!(result.is_err(), "evil-actor should be denied");
+        let err = result.unwrap_err();
+        assert!(
+            matches!(err, SentryError::AccessDenied(_)),
+            "expected AccessDenied, got: {err:?}"
+        );
+
+        // admin can still create policies (permit-all matches, deny only
+        // targets claims sub=evil-actor)
+        let admin_policy = Policy {
+            name: "admin-policy".into(),
+            description: "admin can do this".into(),
+            effect: PolicyEffect::Permit,
+            priority: 1,
+            principal: PrincipalMatcher::default(),
+            resource: ResourceMatcher::default(),
+            action: ActionMatcher::default(),
+            conditions: Conditions::default(),
+            created_at: 0,
+            updated_at: 0,
+        };
+        let result = engine.policy_create(admin_policy, "admin").await;
+        assert!(result.is_ok(), "admin should be permitted: {result:?}");
     }
 }

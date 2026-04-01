@@ -309,7 +309,8 @@ async fn acl_app_token_scoped_access() {
 
     // App can list/get policies (has sentry.policies.* read)
     let policies = client.policy_list().await.unwrap();
-    assert!(policies.is_empty()); // no policies yet
+    // Only the self-auth-permit seed policy should exist
+    assert!(!policies.contains(&"app-test".to_string()));
 
     // App can evaluate (has sentry.evaluate.* read)
     let request = r#"{"principal":{"id":"x"},"resource":{"id":"y","type":"z"},"action":"read"}"#;
@@ -567,7 +568,13 @@ async fn tcp_multiple_commands_same_connection() {
     assert_eq!(info.effect, "permit");
 
     client.policy_delete("multi-cmd-test").await.unwrap();
-    assert!(client.policy_list().await.unwrap().is_empty());
+    assert!(
+        !client
+            .policy_list()
+            .await
+            .unwrap()
+            .contains(&"multi-cmd-test".to_string())
+    );
 }
 
 #[tokio::test]

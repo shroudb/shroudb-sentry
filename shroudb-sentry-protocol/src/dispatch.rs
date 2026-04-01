@@ -41,6 +41,10 @@ pub async fn dispatch<S: Store>(
         return SentryResponse::error(format!("access denied: {e}"));
     }
 
+    let actor = auth_context
+        .map(|ctx| ctx.actor.as_str())
+        .unwrap_or("anonymous");
+
     match cmd {
         SentryCommand::Auth { .. } => {
             // AUTH is handled at the connection layer, never dispatched
@@ -48,17 +52,17 @@ pub async fn dispatch<S: Store>(
         }
 
         SentryCommand::PolicyCreate { name, policy_json } => {
-            handle_policy_create(engine, &name, &policy_json).await
+            handle_policy_create(engine, &name, &policy_json, actor).await
         }
 
         SentryCommand::PolicyGet { name } => handle_policy_get(engine, &name),
 
         SentryCommand::PolicyList => handle_policy_list(engine),
 
-        SentryCommand::PolicyDelete { name } => handle_policy_delete(engine, &name).await,
+        SentryCommand::PolicyDelete { name } => handle_policy_delete(engine, &name, actor).await,
 
         SentryCommand::PolicyUpdate { name, policy_json } => {
-            handle_policy_update(engine, &name, &policy_json).await
+            handle_policy_update(engine, &name, &policy_json, actor).await
         }
 
         SentryCommand::Evaluate { request_json } => handle_evaluate(engine, &request_json),
@@ -93,6 +97,7 @@ async fn handle_policy_create<S: Store>(
     engine: &SentryEngine<S>,
     name: &str,
     policy_json: &str,
+    actor: &str,
 ) -> SentryResponse {
     let mut policy: Policy = match serde_json::from_str(policy_json) {
         Ok(p) => p,
@@ -111,7 +116,7 @@ async fn handle_policy_create<S: Store>(
     }
     policy.updated_at = now;
 
-    match engine.policy_create(policy).await {
+    match engine.policy_create(policy, actor).await {
         Ok(p) => SentryResponse::ok(serde_json::json!({
             "status": "ok",
             "name": p.name,
@@ -146,8 +151,12 @@ fn handle_policy_list<S: Store>(engine: &SentryEngine<S>) -> SentryResponse {
     }))
 }
 
-async fn handle_policy_delete<S: Store>(engine: &SentryEngine<S>, name: &str) -> SentryResponse {
-    match engine.policy_delete(name).await {
+async fn handle_policy_delete<S: Store>(
+    engine: &SentryEngine<S>,
+    name: &str,
+    actor: &str,
+) -> SentryResponse {
+    match engine.policy_delete(name, actor).await {
         Ok(()) => SentryResponse::ok_simple(),
         Err(e) => SentryResponse::error(e.to_string()),
     }
@@ -157,13 +166,14 @@ async fn handle_policy_update<S: Store>(
     engine: &SentryEngine<S>,
     name: &str,
     policy_json: &str,
+    actor: &str,
 ) -> SentryResponse {
     let updates: Policy = match serde_json::from_str(policy_json) {
         Ok(p) => p,
         Err(e) => return SentryResponse::error(format!("invalid policy JSON: {e}")),
     };
 
-    match engine.policy_update(name, updates).await {
+    match engine.policy_update(name, updates, actor).await {
         Ok(p) => SentryResponse::ok(serde_json::json!({
             "status": "ok",
             "name": p.name,

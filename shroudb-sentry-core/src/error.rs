@@ -21,6 +21,10 @@ pub enum SentryError {
     #[error("invalid argument: {0}")]
     InvalidArgument(String),
 
+    /// The request was denied by self-authorization policy.
+    #[error("access denied: {0}")]
+    AccessDenied(String),
+
     /// A Store operation failed.
     #[error("store error: {0}")]
     Store(String),

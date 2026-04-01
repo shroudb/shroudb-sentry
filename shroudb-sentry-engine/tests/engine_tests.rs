@@ -30,7 +30,7 @@ async fn engine_policy_create_and_get() {
         ..Default::default()
     };
 
-    let created = engine.policy_create(policy).await.unwrap();
+    let created = engine.policy_create(policy, "test-actor").await.unwrap();
     assert_eq!(created.name, "test-policy");
 
     let fetched = engine.policy_get("test-policy").unwrap();
@@ -48,8 +48,11 @@ async fn engine_policy_create_duplicate_fails() {
         ..Default::default()
     };
 
-    engine.policy_create(policy.clone()).await.unwrap();
-    let err = engine.policy_create(policy).await;
+    engine
+        .policy_create(policy.clone(), "test-actor")
+        .await
+        .unwrap();
+    let err = engine.policy_create(policy, "test-actor").await;
     assert!(err.is_err());
     assert!(err.unwrap_err().to_string().contains("already exists"));
 }
@@ -64,7 +67,7 @@ async fn engine_policy_create_invalid_name() {
         ..Default::default()
     };
 
-    let err = engine.policy_create(policy).await;
+    let err = engine.policy_create(policy, "test-actor").await;
     assert!(err.is_err());
 }
 
@@ -78,7 +81,7 @@ async fn engine_policy_create_empty_name() {
         ..Default::default()
     };
 
-    let err = engine.policy_create(policy).await;
+    let err = engine.policy_create(policy, "test-actor").await;
     assert!(err.is_err());
 }
 
@@ -95,7 +98,7 @@ async fn engine_policy_list_and_count() {
             effect: shroudb_acl::PolicyEffect::Permit,
             ..Default::default()
         };
-        engine.policy_create(policy).await.unwrap();
+        engine.policy_create(policy, "test-actor").await.unwrap();
     }
 
     assert_eq!(engine.policy_count(), 3);
@@ -107,19 +110,33 @@ async fn engine_policy_list_and_count() {
 async fn engine_policy_delete() {
     let engine = create_test_engine().await;
 
+    // First create a permit-all so self-authorization passes for mutations
+    let permit = shroudb_sentry_core::policy::Policy {
+        name: "permit-all".into(),
+        effect: shroudb_acl::PolicyEffect::Permit,
+        priority: 100,
+        ..Default::default()
+    };
+    engine.policy_create(permit, "test-actor").await.unwrap();
+
+    // Now create the policy we intend to delete (scoped deny that won't
+    // block self-authorization thanks to the higher-priority permit-all)
     let policy = shroudb_sentry_core::policy::Policy {
         name: "to-delete".into(),
         effect: shroudb_acl::PolicyEffect::Deny,
         ..Default::default()
     };
-    engine.policy_create(policy).await.unwrap();
+    engine.policy_create(policy, "test-actor").await.unwrap();
+    assert_eq!(engine.policy_count(), 2);
+
+    engine
+        .policy_delete("to-delete", "test-actor")
+        .await
+        .unwrap();
     assert_eq!(engine.policy_count(), 1);
 
-    engine.policy_delete("to-delete").await.unwrap();
-    assert_eq!(engine.policy_count(), 0);
-
     // Delete again should fail
-    let err = engine.policy_delete("to-delete").await;
+    let err = engine.policy_delete("to-delete", "test-actor").await;
     assert!(err.is_err());
 }
 
@@ -141,7 +158,7 @@ async fn engine_policy_update() {
         priority: 5,
         ..Default::default()
     };
-    engine.policy_create(policy).await.unwrap();
+    engine.policy_create(policy, "test-actor").await.unwrap();
 
     let updates = shroudb_sentry_core::policy::Policy {
         effect: shroudb_acl::PolicyEffect::Deny,
@@ -149,7 +166,10 @@ async fn engine_policy_update() {
         description: "updated".into(),
         ..Default::default()
     };
-    let updated = engine.policy_update("update-me", updates).await.unwrap();
+    let updated = engine
+        .policy_update("update-me", updates, "test-actor")
+        .await
+        .unwrap();
     assert_eq!(updated.effect, shroudb_acl::PolicyEffect::Deny);
     assert_eq!(updated.priority, 20);
     assert_eq!(updated.description, "updated");
@@ -166,7 +186,9 @@ async fn engine_policy_update_nonexistent() {
         effect: shroudb_acl::PolicyEffect::Deny,
         ..Default::default()
     };
-    let err = engine.policy_update("nonexistent", updates).await;
+    let err = engine
+        .policy_update("nonexistent", updates, "test-actor")
+        .await;
     assert!(err.is_err());
 }
 
@@ -203,7 +225,7 @@ async fn engine_evaluate_returns_signed_jwt() {
         },
         ..Default::default()
     };
-    engine.policy_create(policy).await.unwrap();
+    engine.policy_create(policy, "test-actor").await.unwrap();
 
     let request = shroudb_acl::PolicyRequest {
         principal: shroudb_acl::PolicyPrincipal {
@@ -259,7 +281,7 @@ async fn engine_evaluate_after_policy_delete() {
         effect: shroudb_acl::PolicyEffect::Permit,
         ..Default::default()
     };
-    engine.policy_create(policy).await.unwrap();
+    engine.policy_create(policy, "test-actor").await.unwrap();
 
     let request = shroudb_acl::PolicyRequest {
         principal: shroudb_acl::PolicyPrincipal {
@@ -280,7 +302,10 @@ async fn engine_evaluate_after_policy_delete() {
     assert_eq!(signed.decision, shroudb_acl::PolicyEffect::Permit);
 
     // Delete the policy
-    engine.policy_delete("temp-permit").await.unwrap();
+    engine
+        .policy_delete("temp-permit", "test-actor")
+        .await
+        .unwrap();
 
     // Now denied (default)
     let signed = engine.evaluate_request(&request).unwrap();
