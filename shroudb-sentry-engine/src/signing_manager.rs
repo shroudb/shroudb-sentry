@@ -11,9 +11,12 @@ const SIGNING_NAMESPACE: &str = "sentry.signing";
 
 /// Manages signing keyrings with an in-memory DashMap cache
 /// backed by the Store for persistence.
+///
+/// Keyrings are stored behind Arc to avoid cloning key material on every
+/// cache lookup. Mutations clone-on-write via `Arc::unwrap_or_clone`.
 pub struct SigningManager<S: Store> {
     store: Arc<S>,
-    cache: DashMap<String, SigningKeyring>,
+    cache: DashMap<String, Arc<SigningKeyring>>,
 }
 
 impl<S: Store> SigningManager<S> {
@@ -48,7 +51,7 @@ impl<S: Store> SigningManager<S> {
                     Ok(entry) => {
                         if let Ok(keyring) = serde_json::from_slice::<SigningKeyring>(&entry.value)
                         {
-                            self.cache.insert(key_str, keyring);
+                            self.cache.insert(key_str, Arc::new(keyring));
                         } else {
                             tracing::warn!(key = %key_str, "failed to deserialize keyring");
                         }
@@ -77,7 +80,7 @@ impl<S: Store> SigningManager<S> {
         rotation_days: u32,
         drain_days: u32,
         decision_ttl_secs: u64,
-    ) -> Result<SigningKeyring, SentryError> {
+    ) -> Result<Arc<SigningKeyring>, SentryError> {
         if self.cache.contains_key(name) {
             return Err(SentryError::InvalidArgument(format!(
                 "signing keyring already exists: {name}"
@@ -98,12 +101,13 @@ impl<S: Store> SigningManager<S> {
         };
 
         self.save(&keyring).await?;
+        let keyring = Arc::new(keyring);
         self.cache.insert(name.to_string(), keyring.clone());
         Ok(keyring)
     }
 
-    /// Get a keyring by name (from cache).
-    pub fn get(&self, name: &str) -> Result<SigningKeyring, SentryError> {
+    /// Get a keyring by name (from cache). Returns Arc to avoid cloning key material.
+    pub fn get(&self, name: &str) -> Result<Arc<SigningKeyring>, SentryError> {
         self.cache
             .get(name)
             .map(|r| r.value().clone())
@@ -113,13 +117,16 @@ impl<S: Store> SigningManager<S> {
     }
 
     /// Update a keyring. The closure receives a mutable reference.
-    pub async fn update<F>(&self, name: &str, f: F) -> Result<SigningKeyring, SentryError>
+    /// Clone-on-write: the Arc is unwrapped for mutation, then re-wrapped.
+    pub async fn update<F>(&self, name: &str, f: F) -> Result<Arc<SigningKeyring>, SentryError>
     where
         F: FnOnce(&mut SigningKeyring) -> Result<(), SentryError>,
     {
-        let mut keyring = self.get(name)?;
+        let arc = self.get(name)?;
+        let mut keyring = Arc::unwrap_or_clone(arc);
         f(&mut keyring)?;
         self.save(&keyring).await?;
+        let keyring = Arc::new(keyring);
         self.cache.insert(name.to_string(), keyring.clone());
         Ok(keyring)
     }
@@ -306,4 +313,28 @@ fn unix_now() -> u64 {
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_get_returns_arc_without_clone() {
+        let store = shroudb_storage::test_util::create_test_store("sentry-signing-test").await;
+        let mgr = SigningManager::new(store);
+        mgr.init().await.unwrap();
+
+        mgr.create("default", SigningAlgorithm::ES256, 90, 30, 300)
+            .await
+            .unwrap();
+
+        // Two sequential gets should return Arcs pointing to the same allocation
+        let a = mgr.get("default").unwrap();
+        let b = mgr.get("default").unwrap();
+        assert!(
+            Arc::ptr_eq(&a, &b),
+            "sequential gets must return the same Arc, not cloned copies"
+        );
+    }
 }
