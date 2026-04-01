@@ -1,4 +1,4 @@
-use shroudb_acl::AuthContext;
+use shroudb_acl::{self, AuthContext};
 use shroudb_store::Store;
 
 use shroudb_sentry_core::policy::Policy;
@@ -34,11 +34,8 @@ pub async fn dispatch<S: Store>(
     auth_context: Option<&AuthContext>,
 ) -> SentryResponse {
     // Check ACL requirement
-    let requirement = cmd.acl_requirement();
-    if let Some(ctx) = auth_context
-        && let Err(e) = ctx.check(&requirement)
-    {
-        return SentryResponse::error(format!("access denied: {e}"));
+    if let Err(e) = shroudb_acl::check_dispatch_acl(auth_context, &cmd.acl_requirement()) {
+        return SentryResponse::error(e);
     }
 
     let actor = auth_context
