@@ -22,6 +22,7 @@ RUN --mount=type=secret,id=registry_token \
 # --- shroudb-sentry: authorization policy engine ---
 FROM alpine:3.21 AS shroudb-sentry
 RUN adduser -D -u 65532 shroudb && \
+    apk add --no-cache su-exec && \
     mkdir /data && chown shroudb:shroudb /data
 LABEL org.opencontainers.image.title="ShrouDB Sentry" \
       org.opencontainers.image.description="Policy-based authorization engine with signed JWT decisions" \
@@ -30,11 +31,13 @@ LABEL org.opencontainers.image.title="ShrouDB Sentry" \
       org.opencontainers.image.source="https://github.com/shroudb/shroudb-sentry" \
       org.opencontainers.image.licenses="MIT OR Apache-2.0"
 COPY --from=builder /out/shroudb-sentry /shroudb-sentry
+COPY docker-entrypoint.sh /docker-entrypoint.sh
+RUN chmod +x /docker-entrypoint.sh
 VOLUME /data
 WORKDIR /data
-USER shroudb
 EXPOSE 6799
-ENTRYPOINT ["/shroudb-sentry"]
+ENTRYPOINT ["/docker-entrypoint.sh"]
+CMD ["/shroudb-sentry"]
 
 # --- shroudb-sentry-cli: CLI tool ---
 FROM alpine:3.21 AS shroudb-sentry-cli
