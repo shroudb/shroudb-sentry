@@ -1,10 +1,9 @@
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::sync::Arc;
 
 use serde::Deserialize;
-use shroudb_acl::{Scope, StaticTokenValidator, Token, TokenGrant, TokenValidator};
+use shroudb_acl::ServerAuthConfig;
 
 #[derive(Debug, Deserialize)]
 pub struct SentryServerConfig {
@@ -15,7 +14,7 @@ pub struct SentryServerConfig {
     #[serde(default)]
     pub engine: EngineConfig,
     #[serde(default)]
-    pub auth: AuthConfig,
+    pub auth: ServerAuthConfig,
     #[serde(default)]
     pub policies: HashMap<String, PolicySeedConfig>,
 }
@@ -127,34 +126,6 @@ fn default_scheduler_interval_secs() -> u64 {
     3600
 }
 
-#[derive(Debug, Default, Deserialize)]
-pub struct AuthConfig {
-    pub method: Option<String>,
-    #[serde(default)]
-    pub tokens: HashMap<String, TokenConfig>,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct TokenConfig {
-    pub tenant: String,
-    #[serde(default = "default_actor")]
-    pub actor: String,
-    #[serde(default)]
-    pub platform: bool,
-    #[serde(default)]
-    pub grants: Vec<GrantConfig>,
-}
-
-fn default_actor() -> String {
-    "anonymous".into()
-}
-
-#[derive(Debug, Deserialize)]
-pub struct GrantConfig {
-    pub namespace: String,
-    pub scopes: Vec<String>,
-}
-
 /// A policy seed from config (simplified for TOML).
 #[derive(Debug, Deserialize)]
 pub struct PolicySeedConfig {
@@ -179,45 +150,4 @@ pub fn load_config(path: Option<&str>) -> anyhow::Result<SentryServerConfig> {
         }
         None => Ok(toml::from_str("")?),
     }
-}
-
-pub fn build_token_validator(config: &AuthConfig) -> Option<Arc<dyn TokenValidator>> {
-    if config.method.as_deref() != Some("token") || config.tokens.is_empty() {
-        return None;
-    }
-
-    let mut validator = StaticTokenValidator::new();
-
-    for (raw, tc) in &config.tokens {
-        let grants: Vec<TokenGrant> = tc
-            .grants
-            .iter()
-            .map(|g| {
-                let scopes: Vec<Scope> = g
-                    .scopes
-                    .iter()
-                    .map(|s| match s.as_str() {
-                        "write" => Scope::Write,
-                        _ => Scope::Read,
-                    })
-                    .collect();
-                TokenGrant {
-                    namespace: g.namespace.clone(),
-                    scopes,
-                }
-            })
-            .collect();
-
-        let token = Token {
-            tenant: tc.tenant.clone(),
-            actor: tc.actor.clone(),
-            is_platform: tc.platform,
-            grants,
-            expires_at: None,
-        };
-
-        validator.register(raw.clone(), token);
-    }
-
-    Some(Arc::new(validator))
 }

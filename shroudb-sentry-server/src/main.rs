@@ -8,7 +8,7 @@ use tokio::net::TcpListener;
 mod config;
 mod tcp;
 
-use config::{build_token_validator, load_config};
+use config::load_config;
 
 #[derive(Parser)]
 #[command(name = "shroudb-sentry", about = "ShrouDB Sentry authorization engine")]
@@ -118,7 +118,7 @@ async fn main() -> anyhow::Result<()> {
     );
 
     // Auth
-    let token_validator = build_token_validator(&cfg.auth);
+    let token_validator = cfg.auth.build_validator();
 
     // TCP listener
     let listener = TcpListener::bind(cfg.server.tcp_bind).await?;
