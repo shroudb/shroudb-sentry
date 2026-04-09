@@ -612,3 +612,73 @@ async fn acl_app_cannot_delete_or_rotate() {
         .await;
     assert!(err.is_err());
 }
+
+// ── POLICY GET full document (MED-12) ────────────────────────────
+
+#[tokio::test]
+async fn test_policy_get_returns_full_document() {
+    let server = TestServer::start().await.expect("start server");
+    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+
+    // Create a policy with matchers and conditions
+    let policy_json = serde_json::json!({
+        "effect": "permit",
+        "priority": 50,
+        "description": "editors can write docs during business hours",
+        "principal": {
+            "roles": ["editor", "admin"],
+            "claims": {"department": "engineering"}
+        },
+        "resource": {
+            "type": "document",
+            "attributes": {"sensitivity": "internal"}
+        },
+        "action": {
+            "names": ["read", "write", "delete"]
+        },
+        "conditions": {
+            "time_window": {
+                "after": "09:00",
+                "before": "18:00"
+            }
+        }
+    });
+
+    client
+        .policy_create("full-doc-test", &policy_json.to_string())
+        .await
+        .unwrap();
+
+    // GET should return all fields including matchers and conditions
+    let info = client.policy_get("full-doc-test").await.unwrap();
+
+    assert_eq!(info.name, "full-doc-test");
+    assert_eq!(info.effect, "permit");
+    assert_eq!(info.priority, 50);
+    assert_eq!(
+        info.description,
+        "editors can write docs during business hours"
+    );
+
+    // Verify principal matchers
+    let principal = &info.principal;
+    let roles = principal["roles"].as_array().unwrap();
+    assert_eq!(roles.len(), 2);
+    assert_eq!(principal["claims"]["department"], "engineering");
+
+    // Verify resource matchers
+    let resource = &info.resource;
+    assert_eq!(resource["type"], "document");
+    assert_eq!(resource["attributes"]["sensitivity"], "internal");
+
+    // Verify action matchers
+    let action = &info.action;
+    let names = action["names"].as_array().unwrap();
+    assert_eq!(names.len(), 3);
+
+    // Verify conditions
+    let conditions = &info.conditions;
+    let tw = &conditions["time_window"];
+    assert_eq!(tw["after"], "09:00");
+    assert_eq!(tw["before"], "18:00");
+}

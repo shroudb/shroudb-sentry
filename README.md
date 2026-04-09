@@ -5,8 +5,8 @@ Policy-based authorization engine. Evaluates access control policies and returns
 ## Quick Start
 
 ```bash
-# Generate a master key (or omit for ephemeral dev mode)
-export SHROUDB_MASTER_KEY=$(openssl rand -base64 32)
+# Generate a master key (hex-encoded 32 bytes; or omit for ephemeral dev mode)
+export SHROUDB_MASTER_KEY=$(openssl rand -hex 32)
 
 # Start Sentry on TCP port 6799
 cargo run -p shroudb-sentry-server
@@ -51,7 +51,7 @@ All commands are sent as RESP3 arrays of bulk strings. Responses are JSON bulk s
 
 | Environment Variable | Description |
 |---|---|
-| `SHROUDB_MASTER_KEY` | Base64-encoded 32-byte master key |
+| `SHROUDB_MASTER_KEY` | Hex-encoded 32-byte master key |
 | `SHROUDB_MASTER_KEY_FILE` | Path to file containing the master key |
 | `SENTRY_CONFIG` | Path to TOML config file |
 | `SENTRY_DATA_DIR` | Data directory (default: `./sentry-data`) |

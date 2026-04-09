@@ -33,6 +33,9 @@ pub struct Policy {
     /// Optional conditions (time windows, etc.).
     #[serde(default)]
     pub conditions: Conditions,
+    /// Policy version. Starts at 1, increments on each update.
+    #[serde(default)]
+    pub version: u64,
     /// Unix timestamp when this policy was created.
     #[serde(default)]
     pub created_at: u64,
@@ -52,6 +55,7 @@ impl Default for Policy {
             resource: ResourceMatcher::default(),
             action: ActionMatcher::default(),
             conditions: Conditions::default(),
+            version: 0,
             created_at: 0,
             updated_at: 0,
         }
@@ -136,6 +140,7 @@ mod tests {
                 names: vec!["write".into()],
             },
             conditions: Default::default(),
+            version: 1,
             created_at: 1000,
             updated_at: 1000,
         };

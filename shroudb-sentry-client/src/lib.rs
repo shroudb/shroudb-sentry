@@ -20,6 +20,11 @@ pub struct PolicyInfo {
     pub description: String,
     pub effect: String,
     pub priority: i32,
+    pub version: u64,
+    pub principal: serde_json::Value,
+    pub resource: serde_json::Value,
+    pub action: serde_json::Value,
+    pub conditions: serde_json::Value,
     pub created_at: u64,
     pub updated_at: u64,
 }
@@ -83,9 +88,39 @@ impl SentryClient {
             description: resp["description"].as_str().unwrap_or("").to_string(),
             effect: resp["effect"].as_str().unwrap_or("").to_string(),
             priority: resp["priority"].as_i64().unwrap_or(0) as i32,
+            version: resp["version"].as_u64().unwrap_or(0),
+            principal: resp["principal"].clone(),
+            resource: resp["resource"].clone(),
+            action: resp["action"].clone(),
+            conditions: resp["conditions"].clone(),
             created_at: resp["created_at"].as_u64().unwrap_or(0),
             updated_at: resp["updated_at"].as_u64().unwrap_or(0),
         })
+    }
+
+    pub async fn policy_history(&mut self, name: &str) -> Result<Vec<PolicyInfo>, ClientError> {
+        let resp = self.command(&["POLICY", "HISTORY", name]).await?;
+        check_status(&resp)?;
+        resp["versions"]
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .map(|v| PolicyInfo {
+                        name: v["name"].as_str().unwrap_or("").to_string(),
+                        description: v["description"].as_str().unwrap_or("").to_string(),
+                        effect: v["effect"].as_str().unwrap_or("").to_string(),
+                        priority: v["priority"].as_i64().unwrap_or(0) as i32,
+                        version: v["version"].as_u64().unwrap_or(0),
+                        principal: v["principal"].clone(),
+                        resource: v["resource"].clone(),
+                        action: v["action"].clone(),
+                        conditions: v["conditions"].clone(),
+                        created_at: v["created_at"].as_u64().unwrap_or(0),
+                        updated_at: v["updated_at"].as_u64().unwrap_or(0),
+                    })
+                    .collect()
+            })
+            .ok_or_else(|| ClientError::ResponseFormat("expected versions array".into()))
     }
 
     pub async fn policy_list(&mut self) -> Result<Vec<String>, ClientError> {

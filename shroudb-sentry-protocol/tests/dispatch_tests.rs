@@ -317,3 +317,158 @@ async fn dispatch_acl_none_commands_pass() {
         assert_ok(&resp);
     }
 }
+
+// ── Policy versioning (LOW-13) ─────────────────────────────────────
+
+#[tokio::test]
+async fn dispatch_policy_create_returns_version() {
+    let engine = create_test_engine().await;
+
+    let cmd = parse_command(&[
+        "POLICY",
+        "CREATE",
+        "ver-pol",
+        r#"{"effect":"permit","priority":5}"#,
+    ])
+    .unwrap();
+    let resp = dispatch(&engine, cmd, None).await;
+    assert_ok(&resp);
+    assert_eq!(get_json(&resp)["version"].as_u64().unwrap(), 1);
+}
+
+#[tokio::test]
+async fn dispatch_policy_get_returns_version() {
+    let engine = create_test_engine().await;
+
+    let cmd = parse_command(&[
+        "POLICY",
+        "CREATE",
+        "get-ver",
+        r#"{"effect":"permit","priority":5}"#,
+    ])
+    .unwrap();
+    dispatch(&engine, cmd, None).await;
+
+    let cmd = parse_command(&["POLICY", "GET", "get-ver"]).unwrap();
+    let resp = dispatch(&engine, cmd, None).await;
+    assert_ok(&resp);
+    assert_eq!(get_json(&resp)["version"].as_u64().unwrap(), 1);
+}
+
+#[tokio::test]
+async fn dispatch_policy_update_returns_incremented_version() {
+    let engine = create_test_engine().await;
+
+    // Seed self-auth policy
+    engine
+        .seed_policy(shroudb_sentry_core::policy::Policy {
+            name: "self-auth-permit".into(),
+            effect: shroudb_acl::PolicyEffect::Permit,
+            priority: 1000,
+            resource: shroudb_sentry_core::matcher::ResourceMatcher {
+                resource_type: "sentry.policies".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    let cmd = parse_command(&[
+        "POLICY",
+        "CREATE",
+        "upd-ver",
+        r#"{"effect":"permit","priority":5}"#,
+    ])
+    .unwrap();
+    dispatch(&engine, cmd, None).await;
+
+    let cmd = parse_command(&[
+        "POLICY",
+        "UPDATE",
+        "upd-ver",
+        r#"{"effect":"deny","priority":10}"#,
+    ])
+    .unwrap();
+    let resp = dispatch(&engine, cmd, None).await;
+    assert_ok(&resp);
+    assert_eq!(get_json(&resp)["version"].as_u64().unwrap(), 2);
+}
+
+#[tokio::test]
+async fn dispatch_policy_history() {
+    let engine = create_test_engine().await;
+
+    // Seed self-auth policy
+    engine
+        .seed_policy(shroudb_sentry_core::policy::Policy {
+            name: "self-auth-permit".into(),
+            effect: shroudb_acl::PolicyEffect::Permit,
+            priority: 1000,
+            resource: shroudb_sentry_core::matcher::ResourceMatcher {
+                resource_type: "sentry.policies".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    // Create policy
+    let cmd = parse_command(&[
+        "POLICY",
+        "CREATE",
+        "hist-pol",
+        r#"{"effect":"permit","priority":5,"description":"v1"}"#,
+    ])
+    .unwrap();
+    dispatch(&engine, cmd, None).await;
+
+    // Update it
+    let cmd = parse_command(&[
+        "POLICY",
+        "UPDATE",
+        "hist-pol",
+        r#"{"effect":"deny","priority":10,"description":"v2"}"#,
+    ])
+    .unwrap();
+    dispatch(&engine, cmd, None).await;
+
+    // Query history
+    let cmd = parse_command(&["POLICY", "HISTORY", "hist-pol"]).unwrap();
+    let resp = dispatch(&engine, cmd, None).await;
+    assert_ok(&resp);
+
+    let json = get_json(&resp);
+    assert_eq!(json["name"].as_str().unwrap(), "hist-pol");
+    assert_eq!(json["count"].as_u64().unwrap(), 2);
+
+    let versions = json["versions"].as_array().unwrap();
+    assert_eq!(versions[0]["version"].as_u64().unwrap(), 1);
+    assert_eq!(versions[0]["effect"].as_str().unwrap(), "permit");
+    assert_eq!(versions[1]["version"].as_u64().unwrap(), 2);
+    assert_eq!(versions[1]["effect"].as_str().unwrap(), "deny");
+}
+
+#[tokio::test]
+async fn dispatch_policy_history_nonexistent() {
+    let engine = create_test_engine().await;
+    let cmd = parse_command(&["POLICY", "HISTORY", "nonexistent"]).unwrap();
+    let resp = dispatch(&engine, cmd, None).await;
+    assert_err(&resp);
+}
+
+#[tokio::test]
+async fn dispatch_command_list_includes_history() {
+    let engine = create_test_engine().await;
+    let cmd = parse_command(&["COMMAND", "LIST"]).unwrap();
+    let resp = dispatch(&engine, cmd, None).await;
+    assert_ok(&resp);
+    let json = get_json(&resp);
+    let commands = json["commands"].as_array().unwrap();
+    let command_strs: Vec<&str> = commands.iter().filter_map(|c| c.as_str()).collect();
+    assert!(
+        command_strs.contains(&"POLICY HISTORY"),
+        "COMMAND LIST should include POLICY HISTORY"
+    );
+}

@@ -11,6 +11,7 @@ async fn create_test_engine() -> SentryEngine<EmbeddedStore> {
         drain_days: 30,
         decision_ttl_secs: 300,
         scheduler_interval_secs: 3600,
+        require_audit: false,
     };
 
     SentryEngine::new(store, sentry_config, None).await.unwrap()
@@ -241,7 +242,7 @@ async fn engine_evaluate_returns_signed_jwt() {
         action: "read".into(),
     };
 
-    let signed = engine.evaluate_request(&request).unwrap();
+    let signed = engine.evaluate_request(&request).await.unwrap();
     assert_eq!(signed.decision, shroudb_acl::PolicyEffect::Permit);
     assert!(!signed.token.is_empty());
     assert!(signed.token.contains('.')); // JWT format: header.payload.signature
@@ -267,7 +268,7 @@ async fn engine_evaluate_default_deny() {
         action: "read".into(),
     };
 
-    let signed = engine.evaluate_request(&request).unwrap();
+    let signed = engine.evaluate_request(&request).await.unwrap();
     assert_eq!(signed.decision, shroudb_acl::PolicyEffect::Deny);
     assert!(signed.matched_policy.is_none());
 }
@@ -298,7 +299,7 @@ async fn engine_evaluate_after_policy_delete() {
     };
 
     // Initially permitted
-    let signed = engine.evaluate_request(&request).unwrap();
+    let signed = engine.evaluate_request(&request).await.unwrap();
     assert_eq!(signed.decision, shroudb_acl::PolicyEffect::Permit);
 
     // Delete the policy
@@ -308,7 +309,7 @@ async fn engine_evaluate_after_policy_delete() {
         .unwrap();
 
     // Now denied (default)
-    let signed = engine.evaluate_request(&request).unwrap();
+    let signed = engine.evaluate_request(&request).await.unwrap();
     assert_eq!(signed.decision, shroudb_acl::PolicyEffect::Deny);
 }
 
@@ -387,4 +388,231 @@ async fn engine_multiple_rotations() {
     // JWKS: 1 active + 3 draining
     let jwks = engine.jwks().unwrap();
     assert_eq!(jwks["keys"].as_array().unwrap().len(), 4);
+}
+
+// ── Policy versioning (LOW-13) ─────────────────────────────────────
+
+#[tokio::test]
+async fn engine_policy_create_sets_version_1() {
+    let engine = create_test_engine().await;
+
+    let policy = shroudb_sentry_core::policy::Policy {
+        name: "versioned".into(),
+        effect: shroudb_acl::PolicyEffect::Permit,
+        ..Default::default()
+    };
+    let created = engine.policy_create(policy, "admin").await.unwrap();
+    assert_eq!(created.version, 1);
+
+    let fetched = engine.policy_get("versioned").unwrap();
+    assert_eq!(fetched.version, 1);
+}
+
+#[tokio::test]
+async fn engine_policy_update_increments_version() {
+    let engine = create_test_engine().await;
+
+    // Permit-all so self-authorization passes for mutations
+    let permit = shroudb_sentry_core::policy::Policy {
+        name: "permit-all-ver".into(),
+        effect: shroudb_acl::PolicyEffect::Permit,
+        priority: 1000,
+        ..Default::default()
+    };
+    engine.policy_create(permit, "admin").await.unwrap();
+
+    let policy = shroudb_sentry_core::policy::Policy {
+        name: "ver-test".into(),
+        effect: shroudb_acl::PolicyEffect::Permit,
+        priority: 5,
+        ..Default::default()
+    };
+    engine.policy_create(policy, "admin").await.unwrap();
+
+    let updates = shroudb_sentry_core::policy::Policy {
+        effect: shroudb_acl::PolicyEffect::Deny,
+        priority: 10,
+        ..Default::default()
+    };
+    let updated = engine
+        .policy_update("ver-test", updates, "admin")
+        .await
+        .unwrap();
+    assert_eq!(updated.version, 2);
+
+    // Update again
+    let updates2 = shroudb_sentry_core::policy::Policy {
+        effect: shroudb_acl::PolicyEffect::Permit,
+        priority: 20,
+        ..Default::default()
+    };
+    let updated2 = engine
+        .policy_update("ver-test", updates2, "admin")
+        .await
+        .unwrap();
+    assert_eq!(updated2.version, 3);
+}
+
+#[tokio::test]
+async fn engine_policy_history_returns_all_versions() {
+    let engine = create_test_engine().await;
+
+    // Permit-all so self-authorization passes for mutations
+    let permit = shroudb_sentry_core::policy::Policy {
+        name: "permit-all-hist".into(),
+        effect: shroudb_acl::PolicyEffect::Permit,
+        priority: 1000,
+        ..Default::default()
+    };
+    engine.policy_create(permit, "admin").await.unwrap();
+
+    let policy = shroudb_sentry_core::policy::Policy {
+        name: "hist-test".into(),
+        description: "original".into(),
+        effect: shroudb_acl::PolicyEffect::Permit,
+        priority: 1,
+        ..Default::default()
+    };
+    engine.policy_create(policy, "admin").await.unwrap();
+
+    // Update twice
+    let updates1 = shroudb_sentry_core::policy::Policy {
+        description: "first update".into(),
+        effect: shroudb_acl::PolicyEffect::Deny,
+        priority: 2,
+        ..Default::default()
+    };
+    engine
+        .policy_update("hist-test", updates1, "admin")
+        .await
+        .unwrap();
+
+    let updates2 = shroudb_sentry_core::policy::Policy {
+        description: "second update".into(),
+        effect: shroudb_acl::PolicyEffect::Permit,
+        priority: 3,
+        ..Default::default()
+    };
+    engine
+        .policy_update("hist-test", updates2, "admin")
+        .await
+        .unwrap();
+
+    // History should have 3 entries: v1 (archived), v2 (archived), v3 (current)
+    let history = engine.policy_history("hist-test").await.unwrap();
+    assert_eq!(history.len(), 3);
+
+    assert_eq!(history[0].version, 1);
+    assert_eq!(history[0].description, "original");
+    assert_eq!(history[0].effect, shroudb_acl::PolicyEffect::Permit);
+
+    assert_eq!(history[1].version, 2);
+    assert_eq!(history[1].description, "first update");
+    assert_eq!(history[1].effect, shroudb_acl::PolicyEffect::Deny);
+
+    assert_eq!(history[2].version, 3);
+    assert_eq!(history[2].description, "second update");
+    assert_eq!(history[2].effect, shroudb_acl::PolicyEffect::Permit);
+}
+
+#[tokio::test]
+async fn engine_policy_history_nonexistent_fails() {
+    let engine = create_test_engine().await;
+    let err = engine.policy_history("nonexistent").await;
+    assert!(err.is_err());
+    assert!(err.unwrap_err().to_string().contains("not found"));
+}
+
+#[tokio::test]
+async fn engine_policy_history_no_updates() {
+    let engine = create_test_engine().await;
+
+    let policy = shroudb_sentry_core::policy::Policy {
+        name: "no-updates".into(),
+        effect: shroudb_acl::PolicyEffect::Permit,
+        ..Default::default()
+    };
+    engine.policy_create(policy, "admin").await.unwrap();
+
+    // History should have just the current version (no archived versions)
+    let history = engine.policy_history("no-updates").await.unwrap();
+    assert_eq!(history.len(), 1);
+    assert_eq!(history[0].version, 1);
+}
+
+// ── Audit configurability (LOW-14) ─────────────────────────────────
+
+#[tokio::test]
+async fn engine_require_audit_no_chronicle_fails() {
+    let store = shroudb_storage::test_util::create_test_store("sentry-audit").await;
+
+    let config = SentryConfig {
+        require_audit: true,
+        ..Default::default()
+    };
+
+    // No Chronicle configured
+    let engine = SentryEngine::new(store, config, None).await.unwrap();
+
+    // Create a policy so evaluation has something to work with
+    let policy = shroudb_sentry_core::policy::Policy {
+        name: "allow-all".into(),
+        effect: shroudb_acl::PolicyEffect::Permit,
+        ..Default::default()
+    };
+    engine.policy_create(policy, "admin").await.unwrap();
+
+    let request = shroudb_acl::PolicyRequest {
+        principal: shroudb_acl::PolicyPrincipal {
+            id: "alice".into(),
+            roles: vec![],
+            claims: Default::default(),
+        },
+        resource: shroudb_acl::PolicyResource {
+            id: "doc-1".into(),
+            resource_type: "document".into(),
+            attributes: Default::default(),
+        },
+        action: "read".into(),
+    };
+
+    // Should fail because require_audit=true but no Chronicle
+    let result = engine.evaluate_request(&request).await;
+    assert!(result.is_err());
+    assert!(
+        result
+            .unwrap_err()
+            .to_string()
+            .contains("require_audit is true")
+    );
+}
+
+#[tokio::test]
+async fn engine_default_audit_mode_succeeds_without_chronicle() {
+    let engine = create_test_engine().await;
+
+    let policy = shroudb_sentry_core::policy::Policy {
+        name: "allow-all".into(),
+        effect: shroudb_acl::PolicyEffect::Permit,
+        ..Default::default()
+    };
+    engine.policy_create(policy, "admin").await.unwrap();
+
+    let request = shroudb_acl::PolicyRequest {
+        principal: shroudb_acl::PolicyPrincipal {
+            id: "alice".into(),
+            roles: vec![],
+            claims: Default::default(),
+        },
+        resource: shroudb_acl::PolicyResource {
+            id: "doc-1".into(),
+            resource_type: "document".into(),
+            attributes: Default::default(),
+        },
+        action: "read".into(),
+    };
+
+    // Default (require_audit=false) succeeds without Chronicle
+    let result = engine.evaluate_request(&request).await;
+    assert!(result.is_ok());
 }

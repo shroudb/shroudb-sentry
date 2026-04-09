@@ -18,6 +18,9 @@ pub enum SentryCommand {
     /// Delete a policy.
     PolicyDelete { name: String },
 
+    /// Get version history of a policy.
+    PolicyHistory { name: String },
+
     /// Update an existing policy.
     PolicyUpdate { name: String, policy_json: String },
 
@@ -62,13 +65,13 @@ impl SentryCommand {
             | SentryCommand::KeyRotate { .. } => AclRequirement::Admin,
 
             // Read on sentry.policies.*
-            SentryCommand::PolicyGet { .. } | SentryCommand::PolicyList => {
-                AclRequirement::Namespace {
-                    ns: "sentry.policies.*".into(),
-                    scope: Scope::Read,
-                    tenant_override: None,
-                }
-            }
+            SentryCommand::PolicyGet { .. }
+            | SentryCommand::PolicyHistory { .. }
+            | SentryCommand::PolicyList => AclRequirement::Namespace {
+                ns: "sentry.policies.*".into(),
+                scope: Scope::Read,
+                tenant_override: None,
+            },
 
             // Read on sentry.evaluate.*
             SentryCommand::Evaluate { .. } => AclRequirement::Namespace {
@@ -137,6 +140,14 @@ fn parse_policy_subcommand(args: &[&str]) -> Result<SentryCommand, String> {
             })
         }
         "LIST" => Ok(SentryCommand::PolicyList),
+        "HISTORY" => {
+            if args.len() < 3 {
+                return Err("usage: POLICY HISTORY <name>".into());
+            }
+            Ok(SentryCommand::PolicyHistory {
+                name: args[2].to_string(),
+            })
+        }
         "DELETE" => {
             if args.len() < 3 {
                 return Err("usage: POLICY DELETE <name>".into());
@@ -363,6 +374,17 @@ mod tests {
     }
 
     #[test]
+    fn parse_policy_history() {
+        let cmd = parse_command(&["POLICY", "HISTORY", "my-policy"]).unwrap();
+        assert!(matches!(cmd, SentryCommand::PolicyHistory { name } if name == "my-policy"));
+    }
+
+    #[test]
+    fn parse_policy_history_missing_name() {
+        assert!(parse_command(&["POLICY", "HISTORY"]).is_err());
+    }
+
+    #[test]
     fn parse_case_insensitive() {
         assert!(parse_command(&["health"]).is_ok());
         assert!(parse_command(&["Health"]).is_ok());
@@ -370,6 +392,7 @@ mod tests {
         assert!(parse_command(&["key", "info"]).is_ok());
         assert!(parse_command(&["jwks"]).is_ok());
         assert!(parse_command(&["evaluate", "{}"]).is_ok());
+        assert!(parse_command(&["policy", "history", "x"]).is_ok());
     }
 
     #[test]
@@ -384,6 +407,7 @@ mod tests {
             SentryCommand::PolicyGet { name: "x".into() },
             SentryCommand::PolicyList,
             SentryCommand::PolicyDelete { name: "x".into() },
+            SentryCommand::PolicyHistory { name: "x".into() },
             SentryCommand::PolicyUpdate {
                 name: "x".into(),
                 policy_json: "{}".into(),

@@ -96,6 +96,8 @@ pub struct EngineConfig {
     pub decision_ttl_secs: u64,
     #[serde(default = "default_scheduler_interval_secs")]
     pub scheduler_interval_secs: u64,
+    #[serde(default)]
+    pub require_audit: bool,
 }
 
 impl Default for EngineConfig {
@@ -106,6 +108,7 @@ impl Default for EngineConfig {
             drain_days: default_drain_days(),
             decision_ttl_secs: default_decision_ttl_secs(),
             scheduler_interval_secs: default_scheduler_interval_secs(),
+            require_audit: false,
         }
     }
 }

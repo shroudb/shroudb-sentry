@@ -278,6 +278,7 @@ mod tests {
             resource: ResourceMatcher::default(),
             action: ActionMatcher::default(),
             conditions: Conditions::default(),
+            version: 0,
             created_at: 0,
             updated_at: 0,
         }

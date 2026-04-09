@@ -13,6 +13,7 @@ const COMMAND_LIST: &[&str] = &[
     "POLICY CREATE",
     "POLICY GET",
     "POLICY LIST",
+    "POLICY HISTORY",
     "POLICY DELETE",
     "POLICY UPDATE",
     "EVALUATE",
@@ -58,11 +59,13 @@ pub async fn dispatch<S: Store>(
 
         SentryCommand::PolicyDelete { name } => handle_policy_delete(engine, &name, actor).await,
 
+        SentryCommand::PolicyHistory { name } => handle_policy_history(engine, &name).await,
+
         SentryCommand::PolicyUpdate { name, policy_json } => {
             handle_policy_update(engine, &name, &policy_json, actor).await
         }
 
-        SentryCommand::Evaluate { request_json } => handle_evaluate(engine, &request_json),
+        SentryCommand::Evaluate { request_json } => handle_evaluate(engine, &request_json).await,
 
         SentryCommand::KeyRotate { force, dryrun } => {
             handle_key_rotate(engine, force, dryrun).await
@@ -119,6 +122,7 @@ async fn handle_policy_create<S: Store>(
             "name": p.name,
             "effect": p.effect.to_string(),
             "priority": p.priority,
+            "version": p.version,
         })),
         Err(e) => SentryResponse::error(e.to_string()),
     }
@@ -126,17 +130,41 @@ async fn handle_policy_create<S: Store>(
 
 fn handle_policy_get<S: Store>(engine: &SentryEngine<S>, name: &str) -> SentryResponse {
     match engine.policy_get(name) {
-        Ok(p) => SentryResponse::ok(serde_json::json!({
-            "status": "ok",
-            "name": p.name,
-            "description": p.description,
-            "effect": p.effect.to_string(),
-            "priority": p.priority,
-            "created_at": p.created_at,
-            "updated_at": p.updated_at,
-        })),
+        Ok(p) => SentryResponse::ok(policy_to_json(&p)),
         Err(e) => SentryResponse::error(e.to_string()),
     }
+}
+
+async fn handle_policy_history<S: Store>(engine: &SentryEngine<S>, name: &str) -> SentryResponse {
+    match engine.policy_history(name).await {
+        Ok(versions) => {
+            let entries: Vec<serde_json::Value> = versions.iter().map(policy_to_json).collect();
+            SentryResponse::ok(serde_json::json!({
+                "status": "ok",
+                "name": name,
+                "count": entries.len(),
+                "versions": entries,
+            }))
+        }
+        Err(e) => SentryResponse::error(e.to_string()),
+    }
+}
+
+fn policy_to_json(p: &Policy) -> serde_json::Value {
+    serde_json::json!({
+        "status": "ok",
+        "name": p.name,
+        "description": p.description,
+        "effect": p.effect.to_string(),
+        "priority": p.priority,
+        "version": p.version,
+        "principal": p.principal,
+        "resource": p.resource,
+        "action": p.action,
+        "conditions": p.conditions,
+        "created_at": p.created_at,
+        "updated_at": p.updated_at,
+    })
 }
 
 fn handle_policy_list<S: Store>(engine: &SentryEngine<S>) -> SentryResponse {
@@ -176,19 +204,20 @@ async fn handle_policy_update<S: Store>(
             "name": p.name,
             "effect": p.effect.to_string(),
             "priority": p.priority,
+            "version": p.version,
             "updated_at": p.updated_at,
         })),
         Err(e) => SentryResponse::error(e.to_string()),
     }
 }
 
-fn handle_evaluate<S: Store>(engine: &SentryEngine<S>, request_json: &str) -> SentryResponse {
+async fn handle_evaluate<S: Store>(engine: &SentryEngine<S>, request_json: &str) -> SentryResponse {
     let request = match evaluator::parse_evaluation_request(request_json) {
         Ok(r) => r,
         Err(e) => return SentryResponse::error(e.to_string()),
     };
 
-    match engine.evaluate_request(&request) {
+    match engine.evaluate_request(&request).await {
         Ok(signed) => SentryResponse::ok(serde_json::json!({
             "status": "ok",
             "decision": signed.decision.to_string(),
@@ -242,9 +271,10 @@ mod tests {
 
     #[test]
     fn command_list_is_exhaustive() {
-        assert!(COMMAND_LIST.len() >= 13);
+        assert!(COMMAND_LIST.len() >= 14);
         assert!(COMMAND_LIST.contains(&"EVALUATE"));
         assert!(COMMAND_LIST.contains(&"JWKS"));
         assert!(COMMAND_LIST.contains(&"POLICY CREATE"));
+        assert!(COMMAND_LIST.contains(&"POLICY HISTORY"));
     }
 }

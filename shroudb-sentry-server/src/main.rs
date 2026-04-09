@@ -74,6 +74,7 @@ async fn main() -> anyhow::Result<()> {
         drain_days: cfg.engine.drain_days,
         decision_ttl_secs: cfg.engine.decision_ttl_secs,
         scheduler_interval_secs: cfg.engine.scheduler_interval_secs,
+        require_audit: cfg.engine.require_audit,
     };
     let engine = Arc::new(SentryEngine::new(store, sentry_config, None).await?);
 
@@ -101,6 +102,7 @@ async fn main() -> anyhow::Result<()> {
                 names: seed.action_names.clone(),
             },
             conditions: Default::default(),
+            version: 0,
             created_at: 0,
             updated_at: 0,
         };

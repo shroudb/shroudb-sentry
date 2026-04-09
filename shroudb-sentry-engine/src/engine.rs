@@ -33,6 +33,9 @@ pub struct SentryConfig {
     pub decision_ttl_secs: u64,
     /// Interval in seconds for the background scheduler.
     pub scheduler_interval_secs: u64,
+    /// When true, EVALUATE fails if the Chronicle audit event cannot be
+    /// recorded. When false (default), audit is fire-and-forget.
+    pub require_audit: bool,
 }
 
 impl Default for SentryConfig {
@@ -43,6 +46,7 @@ impl Default for SentryConfig {
             drain_days: 30,
             decision_ttl_secs: 300,
             scheduler_interval_secs: 3600,
+            require_audit: false,
         }
     }
 }
@@ -52,6 +56,7 @@ pub struct SentryEngine<S: Store> {
     policies: PolicyManager<S>,
     signing: SigningManager<S>,
     chronicle: Option<Arc<dyn ChronicleOps>>,
+    require_audit: bool,
 }
 
 impl<S: Store> SentryEngine<S> {
@@ -82,6 +87,7 @@ impl<S: Store> SentryEngine<S> {
             policies,
             signing,
             chronicle,
+            require_audit: config.require_audit,
         })
     }
 
@@ -225,6 +231,11 @@ impl<S: Store> SentryEngine<S> {
         Ok(result)
     }
 
+    /// Retrieve the version history of a policy (all past versions + current).
+    pub async fn policy_history(&self, name: &str) -> Result<Vec<Policy>, SentryError> {
+        self.policies.history(name).await
+    }
+
     /// Number of loaded policies.
     pub fn policy_count(&self) -> usize {
         self.policies.count()
@@ -234,31 +245,60 @@ impl<S: Store> SentryEngine<S> {
 
     /// Evaluate an authorization request against all policies and return
     /// a cryptographically signed decision.
-    pub fn evaluate_request(&self, request: &PolicyRequest) -> Result<SignedDecision, SentryError> {
+    ///
+    /// When `require_audit` is true and Chronicle is configured, the audit
+    /// event is recorded synchronously and failure causes the evaluation to
+    /// return an error. When `require_audit` is false (the default), audit
+    /// is fire-and-forget.
+    pub async fn evaluate_request(
+        &self,
+        request: &PolicyRequest,
+    ) -> Result<SignedDecision, SentryError> {
         let start = Instant::now();
         let policies = self.policies.all_sorted();
         let decision = evaluator::evaluate_policies(&policies, request);
         let keyring = self.signing.get("default")?;
         let signed = evaluator::sign_decision(&decision, request, &keyring)?;
 
-        // Fire-and-forget audit — evaluate_request is sync so we spawn.
         if let Some(chronicle) = self.chronicle.clone() {
             let resource = request.resource.id.clone();
             let actor = request.principal.id.clone();
             let duration_ms = start.elapsed().as_millis() as u64;
-            tokio::spawn(async move {
+
+            if self.require_audit {
+                // Synchronous audit — fail the evaluation if recording fails
                 let mut event = Event::new(
                     AuditEngine::Sentry,
                     "EVALUATE".to_string(),
-                    resource.clone(),
+                    resource,
                     EventResult::Ok,
                     actor,
                 );
                 event.duration_ms = duration_ms;
-                if let Err(e) = chronicle.record(event).await {
-                    tracing::warn!(resource, error = %e, "failed to emit audit event");
-                }
-            });
+                chronicle
+                    .record(event)
+                    .await
+                    .map_err(|e| SentryError::Internal(format!("required audit failed: {e}")))?;
+            } else {
+                // Fire-and-forget audit
+                tokio::spawn(async move {
+                    let mut event = Event::new(
+                        AuditEngine::Sentry,
+                        "EVALUATE".to_string(),
+                        resource.clone(),
+                        EventResult::Ok,
+                        actor,
+                    );
+                    event.duration_ms = duration_ms;
+                    if let Err(e) = chronicle.record(event).await {
+                        tracing::warn!(resource, error = %e, "failed to emit audit event");
+                    }
+                });
+            }
+        } else if self.require_audit {
+            return Err(SentryError::Internal(
+                "require_audit is true but no Chronicle is configured".into(),
+            ));
         }
 
         Ok(signed)
@@ -315,17 +355,18 @@ impl<S: Store> PolicyEvaluator for SentryEngine<S> {
         &self,
         request: &PolicyRequest,
     ) -> Pin<Box<dyn Future<Output = Result<PolicyDecision, AclError>> + Send + '_>> {
-        // evaluate_request is synchronous — compute eagerly, wrap result in ready future.
-        let result = self
-            .evaluate_request(request)
-            .map(|signed| PolicyDecision {
-                effect: signed.decision,
-                matched_policy: signed.matched_policy,
-                token: Some(signed.token),
-                cache_until: Some(signed.cache_until),
-            })
-            .map_err(|e| AclError::Internal(format!("sentry evaluation failed: {e}")));
-        Box::pin(std::future::ready(result))
+        let request = request.clone();
+        Box::pin(async move {
+            self.evaluate_request(&request)
+                .await
+                .map(|signed| PolicyDecision {
+                    effect: signed.decision,
+                    matched_policy: signed.matched_policy,
+                    token: Some(signed.token),
+                    cache_until: Some(signed.cache_until),
+                })
+                .map_err(|e| AclError::Internal(format!("sentry evaluation failed: {e}")))
+        })
     }
 }
 
@@ -378,6 +419,7 @@ mod tests {
             resource: ResourceMatcher::default(),
             action: ActionMatcher::default(),
             conditions: Conditions::default(),
+            version: 0,
             created_at: 0,
             updated_at: 0,
         };
@@ -392,7 +434,7 @@ mod tests {
                 let mut decisions = Vec::new();
                 for _ in 0..5u32 {
                     let req = make_request("alice", "doc", "read");
-                    let result = eng.evaluate_request(&req).unwrap();
+                    let result = eng.evaluate_request(&req).await.unwrap();
                     decisions.push(result.decision);
                 }
                 decisions
@@ -409,6 +451,7 @@ mod tests {
             resource: ResourceMatcher::default(),
             action: ActionMatcher::default(),
             conditions: Conditions::default(),
+            version: 0,
             created_at: 0,
             updated_at: 0,
         };
@@ -486,6 +529,7 @@ mod tests {
             resource: ResourceMatcher::default(),
             action: ActionMatcher::default(),
             conditions: Conditions::default(),
+            version: 0,
             created_at: 0,
             updated_at: 0,
         };
@@ -512,6 +556,7 @@ mod tests {
             resource: ResourceMatcher::default(),
             action: ActionMatcher::default(),
             conditions: Conditions::default(),
+            version: 0,
             created_at: 0,
             updated_at: 0,
         };
@@ -537,6 +582,7 @@ mod tests {
             },
             action: ActionMatcher::default(),
             conditions: Conditions::default(),
+            version: 0,
             created_at: 0,
             updated_at: 0,
         };
@@ -552,6 +598,7 @@ mod tests {
             resource: ResourceMatcher::default(),
             action: ActionMatcher::default(),
             conditions: Conditions::default(),
+            version: 0,
             created_at: 0,
             updated_at: 0,
         };
@@ -574,6 +621,7 @@ mod tests {
             resource: ResourceMatcher::default(),
             action: ActionMatcher::default(),
             conditions: Conditions::default(),
+            version: 0,
             created_at: 0,
             updated_at: 0,
         };
