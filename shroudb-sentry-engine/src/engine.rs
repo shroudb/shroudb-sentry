@@ -108,6 +108,7 @@ impl<S: Store> SentryEngine<S> {
         let mut event = Event::new(
             AuditEngine::Sentry,
             operation.to_string(),
+            "policy".to_string(),
             resource.to_string(),
             result,
             actor.unwrap_or("anonymous").to_string(),
@@ -270,6 +271,7 @@ impl<S: Store> SentryEngine<S> {
                 let mut event = Event::new(
                     AuditEngine::Sentry,
                     "EVALUATE".to_string(),
+                    "resource".to_string(),
                     resource,
                     EventResult::Ok,
                     actor,
@@ -285,6 +287,7 @@ impl<S: Store> SentryEngine<S> {
                     let mut event = Event::new(
                         AuditEngine::Sentry,
                         "EVALUATE".to_string(),
+                        "resource".to_string(),
                         resource.clone(),
                         EventResult::Ok,
                         actor,
