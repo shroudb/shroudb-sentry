@@ -24,6 +24,8 @@ pub struct ServerConfig {
     #[serde(default = "default_tcp_bind")]
     pub tcp_bind: SocketAddr,
     pub log_level: Option<String>,
+    #[serde(default)]
+    pub tls: Option<shroudb_server_tcp::TlsConfig>,
 }
 
 impl Default for ServerConfig {
@@ -31,6 +33,7 @@ impl Default for ServerConfig {
         Self {
             tcp_bind: default_tcp_bind(),
             log_level: None,
+            tls: None,
         }
     }
 }

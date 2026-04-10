@@ -11,7 +11,7 @@ members = [
 ]
 
 [workspace.package]
-version = "1.4.12"
+version = "1.4.13"
 edition = "2024"
 rust-version = "1.92"
 license = "MIT OR Apache-2.0"
@@ -31,12 +31,13 @@ shroudb-acl = { version = "0.2.0", registry = "shroudb" }
 shroudb-crypto = { version = "0.1.1", registry = "shroudb" }
 shroudb-chronicle-core = { version = "1.5.0", registry = "shroudb" }
 shroudb-protocol-wire = { version = "0.1.0", registry = "shroudb" }
-shroudb-server-tcp = { version = "0.1.2", registry = "shroudb" }
+shroudb-server-tcp = { version = "0.2.1", registry = "shroudb" }
 shroudb-server-bootstrap = { version = "0.1.0", registry = "shroudb" }
 shroudb-client-common = { version = "0.2.0", registry = "shroudb" }
 
 # Async
 tokio = { version = "1", features = ["full"] }
+tokio-rustls = "0.26"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

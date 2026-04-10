@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use anyhow::Context;
 use clap::Parser;
 use shroudb_sentry_core::signing::SigningAlgorithm;
 use shroudb_sentry_engine::engine::{SentryConfig, SentryEngine};
@@ -133,7 +134,21 @@ async fn main() -> anyhow::Result<()> {
         &cfg.store.data_dir,
     );
 
-    let tcp_handle = tokio::spawn(tcp::run_tcp(listener, engine, token_validator, shutdown_rx));
+    let tls_acceptor = cfg
+        .server
+        .tls
+        .as_ref()
+        .map(shroudb_server_tcp::build_tls_acceptor)
+        .transpose()
+        .context("failed to build TLS acceptor")?;
+
+    let tcp_handle = tokio::spawn(tcp::run_tcp(
+        listener,
+        engine,
+        token_validator,
+        shutdown_rx,
+        tls_acceptor,
+    ));
 
     // Wait for shutdown
     shroudb_server_bootstrap::wait_for_shutdown(shutdown_tx).await?;
