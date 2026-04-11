@@ -16,6 +16,7 @@ shroudb-sentry-core.workspace = true
 shroudb-sentry-engine.workspace = true
 shroudb-sentry-protocol.workspace = true
 shroudb-acl.workspace = true
+shroudb-client.workspace = true
 shroudb-store.workspace = true
 shroudb-storage.workspace = true
 shroudb-protocol-wire.workspace = true

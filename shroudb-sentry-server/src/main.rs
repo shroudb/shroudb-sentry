@@ -1,15 +1,15 @@
+mod config;
+mod tcp;
+
 use std::sync::Arc;
 
 use anyhow::Context;
 use clap::Parser;
 use shroudb_sentry_core::signing::SigningAlgorithm;
 use shroudb_sentry_engine::engine::{SentryConfig, SentryEngine};
-use tokio::net::TcpListener;
+use shroudb_store::Store;
 
-mod config;
-mod tcp;
-
-use config::load_config;
+use crate::config::{SentryServerConfig, load_config};
 
 #[derive(Parser)]
 #[command(name = "shroudb-sentry", about = "ShrouDB Sentry authorization engine")]
@@ -53,14 +53,38 @@ async fn main() -> anyhow::Result<()> {
     let log_level = cfg.server.log_level.as_deref().unwrap_or("info");
     let key_source = shroudb_server_bootstrap::bootstrap(log_level);
 
-    // Validate store config
-    cfg.store.validate()?;
+    // Store: embedded or remote
+    match cfg.store.mode.as_str() {
+        "embedded" => {
+            let storage =
+                shroudb_server_bootstrap::open_storage(&cfg.store.data_dir, key_source.as_ref())
+                    .await
+                    .context("failed to open storage engine")?;
+            let store = Arc::new(shroudb_storage::EmbeddedStore::new(storage, "sentry"));
+            run_server(cfg, store).await
+        }
+        "remote" => {
+            let uri = cfg
+                .store
+                .uri
+                .as_deref()
+                .ok_or_else(|| anyhow::anyhow!("remote mode requires store.uri"))?;
+            tracing::info!(uri, "connecting to remote store");
+            let store = Arc::new(
+                shroudb_client::RemoteStore::connect(uri)
+                    .await
+                    .context("failed to connect to remote store")?,
+            );
+            run_server(cfg, store).await
+        }
+        other => anyhow::bail!("unknown store mode: {other}"),
+    }
+}
 
-    // Storage engine
-    let storage =
-        shroudb_server_bootstrap::open_storage(&cfg.store.data_dir, key_source.as_ref()).await?;
-    let store = Arc::new(shroudb_storage::EmbeddedStore::new(storage, "sentry"));
-
+async fn run_server<S: Store + 'static>(
+    cfg: SentryServerConfig,
+    store: Arc<S>,
+) -> anyhow::Result<()> {
     // Parse signing algorithm
     let signing_algorithm: SigningAlgorithm = cfg
         .engine
@@ -124,7 +148,7 @@ async fn main() -> anyhow::Result<()> {
     let token_validator = cfg.auth.build_validator();
 
     // TCP listener
-    let listener = TcpListener::bind(cfg.server.tcp_bind).await?;
+    let listener = tokio::net::TcpListener::bind(cfg.server.tcp_bind).await?;
 
     // Banner
     shroudb_server_bootstrap::print_banner(

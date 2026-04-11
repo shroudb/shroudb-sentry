@@ -1,4 +1,5 @@
 use std::future::Future;
+use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 
@@ -9,13 +10,14 @@ use shroudb_sentry_protocol::commands::{SentryCommand, parse_command};
 use shroudb_sentry_protocol::dispatch;
 use shroudb_sentry_protocol::response::SentryResponse;
 use shroudb_server_tcp::ServerProtocol;
+use shroudb_store::Store;
 
-pub struct SentryProtocol;
+pub struct SentryProtocol<S>(PhantomData<S>);
 
-impl ServerProtocol for SentryProtocol {
+impl<S: Store + 'static> ServerProtocol for SentryProtocol<S> {
     type Command = SentryCommand;
     type Response = SentryResponse;
-    type Engine = SentryEngine<shroudb_storage::EmbeddedStore>;
+    type Engine = SentryEngine<S>;
 
     fn engine_name(&self) -> &str {
         "sentry"
@@ -65,9 +67,9 @@ impl ServerProtocol for SentryProtocol {
     }
 }
 
-pub async fn run_tcp(
+pub async fn run_tcp<S: Store + 'static>(
     listener: tokio::net::TcpListener,
-    engine: Arc<SentryEngine<shroudb_storage::EmbeddedStore>>,
+    engine: Arc<SentryEngine<S>>,
     token_validator: Option<Arc<dyn TokenValidator>>,
     shutdown_rx: tokio::sync::watch::Receiver<bool>,
     tls_acceptor: Option<tokio_rustls::TlsAcceptor>,
@@ -75,7 +77,7 @@ pub async fn run_tcp(
     shroudb_server_tcp::run_tcp_tls(
         listener,
         engine,
-        Arc::new(SentryProtocol),
+        Arc::new(SentryProtocol::<S>(PhantomData)),
         token_validator,
         shutdown_rx,
         tls_acceptor,

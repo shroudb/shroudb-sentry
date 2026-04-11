@@ -52,23 +52,6 @@ pub struct StoreConfig {
     pub uri: Option<String>,
 }
 
-impl StoreConfig {
-    /// Validates the store config mode is supported.
-    pub fn validate(&self) -> anyhow::Result<()> {
-        match self.mode.as_str() {
-            "embedded" => Ok(()),
-            "remote" => {
-                let _uri = self
-                    .uri
-                    .as_ref()
-                    .ok_or_else(|| anyhow::anyhow!("remote mode requires a uri"))?;
-                anyhow::bail!("remote store mode is not yet implemented")
-            }
-            other => anyhow::bail!("unknown store mode: {other}"),
-        }
-    }
-}
-
 impl Default for StoreConfig {
     fn default() -> Self {
         Self {
@@ -155,5 +138,47 @@ pub fn load_config(path: Option<&str>) -> anyhow::Result<SentryServerConfig> {
             Ok(toml::from_str(&content)?)
         }
         None => Ok(toml::from_str("")?),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn config_defaults_to_embedded_mode() {
+        let cfg: SentryServerConfig = toml::from_str("").expect("parse failed");
+        assert_eq!(cfg.store.mode, "embedded");
+        assert!(cfg.store.uri.is_none());
+    }
+
+    #[test]
+    fn config_parses_remote_mode_with_uri() {
+        let toml = r#"
+[store]
+mode = "remote"
+uri = "shroudb://token@127.0.0.1:6399"
+"#;
+        let cfg: SentryServerConfig = toml::from_str(toml).expect("parse failed");
+        assert_eq!(cfg.store.mode, "remote");
+        assert_eq!(
+            cfg.store.uri.as_deref(),
+            Some("shroudb://token@127.0.0.1:6399")
+        );
+    }
+
+    #[test]
+    fn config_parses_remote_mode_tls_uri() {
+        let toml = r#"
+[store]
+mode = "remote"
+uri = "shroudb+tls://token@store.example.com:6399"
+"#;
+        let cfg: SentryServerConfig = toml::from_str(toml).expect("parse failed");
+        assert_eq!(cfg.store.mode, "remote");
+        assert_eq!(
+            cfg.store.uri.as_deref(),
+            Some("shroudb+tls://token@store.example.com:6399")
+        );
     }
 }
