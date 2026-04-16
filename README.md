@@ -18,6 +18,7 @@ cargo run -p shroudb-sentry-server
 POLICY CREATE <name> <json>    Create an authorization policy
 POLICY GET <name>              Get policy details
 POLICY LIST                    List all policy names
+POLICY HISTORY <name>          Get version history of a policy
 POLICY DELETE <name>           Delete a policy
 POLICY UPDATE <name> <json>    Update an existing policy
 EVALUATE <json>                Evaluate a request and return a signed decision

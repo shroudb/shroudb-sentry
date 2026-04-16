@@ -51,14 +51,14 @@ action_names = ["write", "update"]
 
 The master key encrypts all data at rest. Three sources are tried in order:
 
-1. `SHROUDB_MASTER_KEY` environment variable (base64-encoded 32 bytes)
+1. `SHROUDB_MASTER_KEY` environment variable (hex-encoded 32 bytes)
 2. `SHROUDB_MASTER_KEY_FILE` environment variable (path to key file)
 3. Ephemeral key (random, data lost on restart — dev mode only)
 
 Generate a production key:
 
 ```bash
-openssl rand -base64 32
+openssl rand -hex 32
 ```
 
 ## Policies
@@ -121,6 +121,17 @@ POLICY LIST
 Response:
 ```json
 {"status": "ok", "count": 3, "policies": ["policy-a", "policy-b", "policy-c"]}
+```
+
+### History
+
+```
+POLICY HISTORY <name>
+```
+
+Response:
+```json
+{"status": "ok", "name": "editors-write-docs", "count": 2, "versions": [{...}, {...}]}
 ```
 
 ### Update
@@ -228,7 +239,7 @@ When `[auth] method = "token"` is set, connections must authenticate before usin
 | Command | Requirement |
 |---|---|
 | AUTH, HEALTH, PING, COMMAND LIST, KEY INFO, JWKS | None (pre-auth) |
-| POLICY GET, POLICY LIST | `sentry.policies.*` read |
+| POLICY GET, POLICY LIST, POLICY HISTORY | `sentry.policies.*` read |
 | EVALUATE | `sentry.evaluate.*` read |
 | POLICY CREATE/DELETE/UPDATE, KEY ROTATE | Admin (platform token) |
 

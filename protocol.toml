@@ -1,5 +1,6 @@
 [protocol]
 name = "sentry"
+description = "Policy-based authorization engine"
 version = "1.0.0"
 default_tcp_port = 6799
 uri_schemes = ["shroudb-sentry://", "shroudb-sentry+tls://"]
