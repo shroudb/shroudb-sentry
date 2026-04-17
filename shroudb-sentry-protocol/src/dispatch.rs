@@ -1,4 +1,5 @@
 use shroudb_acl::{self, AuthContext};
+use shroudb_protocol_wire::WIRE_PROTOCOL;
 use shroudb_store::Store;
 
 use shroudb_sentry_core::policy::Policy;
@@ -23,6 +24,7 @@ const COMMAND_LIST: &[&str] = &[
     "HEALTH",
     "PING",
     "COMMAND LIST",
+    "HELLO",
 ];
 
 /// Dispatch a command to the engine and return a response.
@@ -90,6 +92,14 @@ pub async fn dispatch<S: Store>(
                 "commands": commands,
             }))
         }
+
+        SentryCommand::Hello => SentryResponse::ok(serde_json::json!({
+            "engine": "sentry",
+            "version": env!("CARGO_PKG_VERSION"),
+            "protocol": WIRE_PROTOCOL,
+            "commands": COMMAND_LIST,
+            "capabilities": Vec::<&str>::new(),
+        })),
     }
 }
 

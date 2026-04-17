@@ -44,6 +44,12 @@ pub enum SentryCommand {
 
     /// List supported commands.
     CommandList,
+
+    /// Engine identity handshake. Pre-auth; returns engine name, version,
+    /// wire protocol, supported commands, and capability tags so a client
+    /// can detect SDK/engine version mismatches before issuing any real
+    /// command.
+    Hello,
 }
 
 impl SentryCommand {
@@ -55,6 +61,7 @@ impl SentryCommand {
             | SentryCommand::Health
             | SentryCommand::Ping
             | SentryCommand::CommandList
+            | SentryCommand::Hello
             | SentryCommand::KeyInfo
             | SentryCommand::Jwks => AclRequirement::None,
 
@@ -112,6 +119,7 @@ pub fn parse_command(args: &[&str]) -> Result<SentryCommand, String> {
         "HEALTH" => Ok(SentryCommand::Health),
         "PING" => Ok(SentryCommand::Ping),
         "COMMAND" => Ok(SentryCommand::CommandList),
+        "HELLO" => Ok(SentryCommand::Hello),
         _ => Err(format!("unknown command: {}", args[0])),
     }
 }
@@ -374,6 +382,12 @@ mod tests {
     }
 
     #[test]
+    fn parse_hello() {
+        let cmd = parse_command(&["HELLO"]).unwrap();
+        assert!(matches!(cmd, SentryCommand::Hello));
+    }
+
+    #[test]
     fn parse_policy_history() {
         let cmd = parse_command(&["POLICY", "HISTORY", "my-policy"]).unwrap();
         assert!(matches!(cmd, SentryCommand::PolicyHistory { name } if name == "my-policy"));
@@ -424,6 +438,7 @@ mod tests {
             SentryCommand::Health,
             SentryCommand::Ping,
             SentryCommand::CommandList,
+            SentryCommand::Hello,
         ];
 
         for cmd in commands {
