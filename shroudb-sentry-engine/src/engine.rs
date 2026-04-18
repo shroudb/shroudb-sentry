@@ -47,7 +47,11 @@ impl Default for SentryConfig {
             drain_days: 30,
             decision_ttl_secs: 300,
             scheduler_interval_secs: 3600,
-            require_audit: false,
+            // Sentry is the audit authority for authorization decisions.
+            // Silent audit loss on a configured-but-unhealthy Chronicle is
+            // incompatible with fail-closed posture — default to requiring
+            // audit so operators must explicitly opt out.
+            require_audit: true,
         }
     }
 }
@@ -431,7 +435,15 @@ mod tests {
 
     async fn setup() -> SentryEngine<shroudb_storage::EmbeddedStore> {
         let store = shroudb_storage::test_util::create_test_store("sentry-test").await;
-        SentryEngine::new(store, SentryConfig::default(), Capability::DisabledForTests)
+        // Chronicle is DisabledForTests, so require_audit must also be
+        // off — otherwise the two settings are contradictory and every
+        // evaluation would fail closed before reaching the behavior
+        // under test.
+        let cfg = SentryConfig {
+            require_audit: false,
+            ..SentryConfig::default()
+        };
+        SentryEngine::new(store, cfg, Capability::DisabledForTests)
             .await
             .unwrap()
     }
