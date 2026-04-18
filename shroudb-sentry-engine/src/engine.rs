@@ -1,6 +1,7 @@
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
 
 use shroudb_acl::{
@@ -56,12 +57,25 @@ impl Default for SentryConfig {
     }
 }
 
+/// Persistent sentinel namespace used to record that bootstrap has
+/// completed. Once any entry exists in this namespace, the bootstrap
+/// gate is permanently closed for this store — the gate does not
+/// reopen when the last policy is deleted.
+const BOOTSTRAP_NAMESPACE: &str = "sentry.meta";
+const BOOTSTRAP_KEY: &[u8] = b"bootstrap-completed";
+
 /// The Sentry authorization engine, generic over the Store implementation.
 pub struct SentryEngine<S: Store> {
+    store: Arc<S>,
     policies: PolicyManager<S>,
     signing: SigningManager<S>,
     chronicle: Capability<Arc<dyn ChronicleOps>>,
     require_audit: bool,
+    /// One-shot latch: once any policy has ever been persisted in this
+    /// store, bootstrap is permanently closed. Persisted as a sentinel
+    /// key so restarts do not re-open the gate; mirrored in memory so
+    /// the hot path is an atomic load.
+    bootstrap_latched: AtomicBool,
 }
 
 impl<S: Store> SentryEngine<S> {
@@ -76,7 +90,7 @@ impl<S: Store> SentryEngine<S> {
         chronicle: Capability<Arc<dyn ChronicleOps>>,
     ) -> Result<Self, SentryError> {
         let policies = PolicyManager::new(store.clone());
-        let signing = SigningManager::new(store);
+        let signing = SigningManager::new(store.clone());
 
         policies.init().await?;
         signing.init().await?;
@@ -92,12 +106,45 @@ impl<S: Store> SentryEngine<S> {
             )
             .await?;
 
+        // Ensure the bootstrap-meta namespace exists, then read the latch
+        // state. `policies.count() > 0` also latches: an upgraded engine
+        // with pre-existing policies but no sentinel yet must still be
+        // considered bootstrapped.
+        let ns_cfg = shroudb_store::NamespaceConfig::default();
+        if let Err(e) = store.namespace_create(BOOTSTRAP_NAMESPACE, ns_cfg).await {
+            let msg = e.to_string();
+            if !msg.contains("already exists") {
+                return Err(SentryError::Store(msg));
+            }
+        }
+        let latched_on_disk = store
+            .get(BOOTSTRAP_NAMESPACE, BOOTSTRAP_KEY, None)
+            .await
+            .is_ok();
+        let bootstrap_latched = AtomicBool::new(latched_on_disk || policies.count() > 0);
+
         Ok(Self {
+            store,
             policies,
             signing,
             chronicle,
             require_audit: config.require_audit,
+            bootstrap_latched,
         })
+    }
+
+    /// Persist and set the in-memory bootstrap latch. Idempotent — safe
+    /// to call on every successful policy create.
+    async fn latch_bootstrap(&self) -> Result<(), SentryError> {
+        if self.bootstrap_latched.load(Ordering::Acquire) {
+            return Ok(());
+        }
+        self.store
+            .put(BOOTSTRAP_NAMESPACE, BOOTSTRAP_KEY, b"1", None)
+            .await
+            .map_err(|e| SentryError::Store(e.to_string()))?;
+        self.bootstrap_latched.store(true, Ordering::Release);
+        Ok(())
     }
 
     /// Emit an audit event to Chronicle. If chronicle is not configured, this
@@ -134,19 +181,26 @@ impl<S: Store> SentryEngine<S> {
 
     /// Evaluate whether a policy mutation is permitted.
     ///
-    /// Bootstrap rule: if no policies exist yet, the operation is permitted
-    /// unconditionally so the first policy can be created.
+    /// Bootstrap rule: the first mutation on a virgin store is permitted
+    /// unconditionally so the first policy can be created. Once ANY
+    /// policy has ever existed, the bootstrap latch closes permanently —
+    /// deleting all policies does not reopen the gate. Without this
+    /// one-shot semantic, an attacker who reaches an empty state (by
+    /// gaining delete rights or forcing a rollback) would get
+    /// unconditional write access.
     ///
-    /// Once policies exist, the request is evaluated against them. If no
-    /// policy explicitly permits the operation, the default-deny applies
-    /// and the mutation is rejected.
+    /// After the latch closes, the request is evaluated against existing
+    /// policies. If no policy explicitly permits the operation, the
+    /// default-deny applies and the mutation is rejected.
     fn authorize_policy_mutation(
         &self,
         policy_name: &str,
         action: &str,
         actor: &str,
     ) -> Result<(), SentryError> {
-        if self.policies.count() == 0 {
+        // Bootstrap is only open for a truly virgin store: no in-memory
+        // policies AND no persisted latch from a prior incarnation.
+        if !self.bootstrap_latched.load(Ordering::Acquire) && self.policies.count() == 0 {
             return Ok(());
         }
 
@@ -193,13 +247,30 @@ impl<S: Store> SentryEngine<S> {
         let name = policy.name.clone();
         self.authorize_policy_mutation(&name, "create", actor)?;
         let result = self.policies.create(policy).await?;
+        // Latch the bootstrap gate the first time a policy lands. This
+        // persists to disk so a restart on an empty store (because every
+        // policy was later deleted) does not re-open the gate.
+        if let Err(latch_err) = self.latch_bootstrap().await {
+            // Latching failed — roll back the create so the store never
+            // contains a policy without a matching closed-latch.
+            if let Err(rollback_err) = self.policies.delete(&name).await {
+                return Err(SentryError::Internal(format!(
+                    "bootstrap latch failed ({latch_err}) and rollback \
+                     of policy '{name}' also failed ({rollback_err})"
+                )));
+            }
+            return Err(latch_err);
+        }
         if let Err(audit_err) = self
             .emit_audit_event("POLICY_CREATE", &name, EventResult::Ok, Some(actor), start)
             .await
         {
             // Compensating rollback: audit failed, so the mutation must not
             // remain durable. If the rollback itself fails we surface that
-            // too — a half-committed state is the worst outcome.
+            // too — a half-committed state is the worst outcome. The
+            // bootstrap latch stays closed: a policy did exist, and the
+            // operator must re-authorize the next create through the
+            // normal ABAC path.
             if let Err(rollback_err) = self.policies.delete(&name).await {
                 return Err(SentryError::Internal(format!(
                     "audit failed ({audit_err}) and rollback of policy \
@@ -331,9 +402,7 @@ impl<S: Store> SentryEngine<S> {
             event.duration_ms = duration_ms;
             if let Err(e) = chronicle.record(event).await {
                 if self.require_audit {
-                    return Err(SentryError::Internal(format!(
-                        "required audit failed: {e}"
-                    )));
+                    return Err(SentryError::Internal(format!("required audit failed: {e}")));
                 }
                 tracing::warn!(resource, error = %e, "failed to emit audit event");
             }

@@ -9,10 +9,14 @@ use shroudb_storage::EmbeddedStore;
 async fn create_test_engine() -> SentryEngine<EmbeddedStore> {
     let store = shroudb_storage::test_util::create_test_store("sentry-test").await;
 
+    // Chronicle is DisabledForTests, so require_audit must also be off
+    // — otherwise the two settings are contradictory and every evaluate
+    // would fail closed before reaching the behavior under test.
     SentryEngine::new(
         store,
         SentryConfig {
             signing_algorithm: SigningAlgorithm::ES256,
+            require_audit: false,
             ..Default::default()
         },
         Capability::DisabledForTests,
