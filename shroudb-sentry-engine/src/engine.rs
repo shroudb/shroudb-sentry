@@ -456,8 +456,12 @@ impl<S: Store> SentryEngine<S> {
     }
 
     /// Seed a policy if it doesn't already exist (for config-based seeding).
+    /// Closes the bootstrap latch: a seeded policy is still a policy, and
+    /// the gate must not reopen if the operator later deletes it.
     pub async fn seed_policy(&self, policy: Policy) -> Result<(), SentryError> {
-        self.policies.seed_if_absent(policy).await
+        self.policies.seed_if_absent(policy).await?;
+        self.latch_bootstrap().await?;
+        Ok(())
     }
 }
 
