@@ -8,14 +8,14 @@ use shroudb_sentry_client::SentryClient;
 #[tokio::test]
 async fn tcp_health() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
     client.health().await.unwrap();
 }
 
 #[tokio::test]
 async fn tcp_policy_lifecycle() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     // Create a policy
     let policy_json = r#"{"effect":"permit","priority":10,"description":"editors can write docs"}"#;
@@ -53,7 +53,7 @@ async fn tcp_policy_lifecycle() {
 #[tokio::test]
 async fn tcp_evaluate_permit() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     // Create a permit policy for editors writing documents
     let policy_json = r#"{
@@ -84,7 +84,7 @@ async fn tcp_evaluate_permit() {
 #[tokio::test]
 async fn tcp_evaluate_deny_no_match() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     // No policies → default deny
     let request = r#"{
@@ -100,7 +100,7 @@ async fn tcp_evaluate_deny_no_match() {
 #[tokio::test]
 async fn tcp_evaluate_deny_trumps_permit() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     // Create permit and deny at same priority
     let permit = r#"{"effect": "permit", "priority": 10}"#;
@@ -121,7 +121,7 @@ async fn tcp_evaluate_deny_trumps_permit() {
 #[tokio::test]
 async fn tcp_key_info_and_jwks() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     // Key info
     let info = client.key_info().await.unwrap();
@@ -139,7 +139,7 @@ async fn tcp_key_info_and_jwks() {
 #[tokio::test]
 async fn tcp_key_rotate() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     // Force rotation
     let result = client.key_rotate(true, false).await.unwrap();
@@ -156,7 +156,7 @@ async fn tcp_key_rotate() {
 #[tokio::test]
 async fn tcp_key_rotate_dryrun() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     let result = client.key_rotate(true, true).await.unwrap();
     assert!(result.rotated);
@@ -184,7 +184,7 @@ async fn tcp_config_seeded_policies() {
     let server = TestServer::start_with_config(config)
         .await
         .expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     let policies = client.policy_list().await.unwrap();
     assert!(policies.contains(&"seeded-policy".to_string()));
@@ -197,7 +197,7 @@ async fn tcp_config_seeded_policies() {
 #[tokio::test]
 async fn tcp_error_responses() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     // Get nonexistent policy
     let err = client.policy_get("nonexistent").await;
@@ -223,7 +223,7 @@ async fn tcp_error_responses() {
 #[tokio::test]
 async fn test_max_length_policy_name() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     // 255-char name is the maximum allowed
     let long_name = "a".repeat(255);
@@ -242,7 +242,7 @@ async fn test_max_length_policy_name() {
 #[tokio::test]
 async fn test_policy_name_too_long() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     // 256-char name exceeds the limit
     let too_long = "a".repeat(256);
@@ -258,7 +258,7 @@ async fn acl_unauthenticated_rejection() {
     let server = TestServer::start_with_config(auth_server_config())
         .await
         .expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     // Unauthenticated: health should work (AclRequirement::None)
     client.health().await.unwrap();
@@ -276,7 +276,7 @@ async fn acl_admin_token_full_access() {
     let server = TestServer::start_with_config(auth_server_config())
         .await
         .expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     client.auth("admin-token").await.unwrap();
 
@@ -303,7 +303,7 @@ async fn acl_app_token_scoped_access() {
     let server = TestServer::start_with_config(auth_server_config())
         .await
         .expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     client.auth("app-token").await.unwrap();
 
@@ -328,7 +328,7 @@ async fn acl_readonly_token_limited() {
     let server = TestServer::start_with_config(auth_server_config())
         .await
         .expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     client.auth("readonly-token").await.unwrap();
 
@@ -351,7 +351,7 @@ async fn acl_wrong_token_rejected() {
     let server = TestServer::start_with_config(auth_server_config())
         .await
         .expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     let err = client.auth("wrong-token").await;
     assert!(err.is_err());
@@ -362,7 +362,7 @@ async fn acl_wrong_token_rejected() {
 #[tokio::test]
 async fn tcp_evaluate_complex_policy_matching() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     // Policy: editors can write documents
     let policy = r#"{
@@ -442,7 +442,7 @@ async fn tcp_evaluate_complex_policy_matching() {
 #[tokio::test]
 async fn tcp_evaluate_after_delete() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     let json = r#"{"effect":"permit","priority":10}"#;
     client.policy_create("temp", json).await.unwrap();
@@ -460,7 +460,7 @@ async fn tcp_evaluate_after_delete() {
 #[tokio::test]
 async fn tcp_evaluate_priority_ordering() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     // Low priority permit
     let json = r#"{"effect":"permit","priority":1}"#;
@@ -479,7 +479,7 @@ async fn tcp_evaluate_priority_ordering() {
 #[tokio::test]
 async fn tcp_key_rotate_without_force() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     // Without FORCE, key is too fresh (rotation_days=90)
     let result = client.key_rotate(false, false).await.unwrap();
@@ -491,7 +491,7 @@ async fn tcp_key_rotate_without_force() {
 #[tokio::test]
 async fn tcp_multiple_rotations_jwks_count() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     client.key_rotate(true, false).await.unwrap();
     client.key_rotate(true, false).await.unwrap();
@@ -508,7 +508,7 @@ async fn tcp_multiple_rotations_jwks_count() {
 #[tokio::test]
 async fn tcp_policy_invalid_name_via_wire() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     let err = client
         .policy_create("bad name!", r#"{"effect":"permit"}"#)
@@ -519,7 +519,7 @@ async fn tcp_policy_invalid_name_via_wire() {
 #[tokio::test]
 async fn tcp_policy_update_nonexistent() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     let err = client
         .policy_update("nonexistent", r#"{"effect":"deny"}"#)
@@ -530,7 +530,7 @@ async fn tcp_policy_update_nonexistent() {
 #[tokio::test]
 async fn tcp_evaluate_missing_required_fields() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     // Missing principal.id
     let err = client
@@ -554,7 +554,7 @@ async fn tcp_evaluate_missing_required_fields() {
 #[tokio::test]
 async fn tcp_multiple_commands_same_connection() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     // Run several different commands on the same connection
     client.health().await.unwrap();
@@ -582,7 +582,7 @@ async fn acl_key_info_and_jwks_always_public() {
     let server = TestServer::start_with_config(auth_server_config())
         .await
         .expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     // Unauthenticated: KEY INFO and JWKS should work (AclRequirement::None)
     client.key_info().await.unwrap();
@@ -594,7 +594,7 @@ async fn acl_app_cannot_delete_or_rotate() {
     let server = TestServer::start_with_config(auth_server_config())
         .await
         .expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     client.auth("app-token").await.unwrap();
 
@@ -618,7 +618,7 @@ async fn acl_app_cannot_delete_or_rotate() {
 #[tokio::test]
 async fn test_policy_get_returns_full_document() {
     let server = TestServer::start().await.expect("start server");
-    let mut client = SentryClient::connect(&server.tcp_addr).await.unwrap();
+    let client = SentryClient::connect(&server.tcp_addr).await.unwrap();
 
     // Create a policy with matchers and conditions
     let policy_json = serde_json::json!({

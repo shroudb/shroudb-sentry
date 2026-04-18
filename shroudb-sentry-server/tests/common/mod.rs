@@ -88,7 +88,7 @@ impl TestServer {
                 eprintln!("TestServer: process exited during startup");
                 return None;
             }
-            if let Ok(mut client) = SentryClient::connect(&tcp_addr).await
+            if let Ok(client) = SentryClient::connect(&tcp_addr).await
                 && client.health().await.is_ok()
             {
                 break;

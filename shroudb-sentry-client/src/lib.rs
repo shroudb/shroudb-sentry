@@ -1,9 +1,11 @@
 mod connection;
 mod error;
+pub mod policy_evaluator;
 
 pub use error::ClientError;
 
 use connection::Connection;
+use tokio::sync::Mutex;
 
 /// Result types for Sentry client operations.
 #[derive(Debug, Clone)]
@@ -37,15 +39,22 @@ pub struct RotateResult {
 }
 
 /// Typed async client for the Sentry authorization engine.
+///
+/// The TCP connection lives behind a `Mutex` so methods take `&self` (not
+/// `&mut self`). This lets `SentryClient` satisfy
+/// [`shroudb_acl::PolicyEvaluator`] as a trait object, and lets consumers
+/// share a single client across tasks via `Arc<SentryClient>`.
 pub struct SentryClient {
-    conn: Connection,
+    conn: Mutex<Connection>,
 }
 
 impl SentryClient {
     /// Connect directly to a standalone Sentry server.
     pub async fn connect(addr: &str) -> Result<Self, ClientError> {
         let conn = Connection::connect(addr).await?;
-        Ok(Self { conn })
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     /// Connect to a Sentry engine through a Moat gateway.
@@ -54,20 +63,22 @@ impl SentryClient {
     /// Meta-commands (AUTH, HEALTH, PING) are sent without prefix.
     pub async fn connect_moat(addr: &str) -> Result<Self, ClientError> {
         let conn = Connection::connect_moat(addr).await?;
-        Ok(Self { conn })
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
-    pub async fn auth(&mut self, token: &str) -> Result<(), ClientError> {
+    pub async fn auth(&self, token: &str) -> Result<(), ClientError> {
         let resp = self.meta_command(&["AUTH", token]).await?;
         check_status(&resp)
     }
 
-    pub async fn health(&mut self) -> Result<(), ClientError> {
+    pub async fn health(&self) -> Result<(), ClientError> {
         let resp = self.meta_command(&["HEALTH"]).await?;
         check_status(&resp)
     }
 
-    pub async fn evaluate(&mut self, request_json: &str) -> Result<EvaluateResult, ClientError> {
+    pub async fn evaluate(&self, request_json: &str) -> Result<EvaluateResult, ClientError> {
         let resp = self.command(&["EVALUATE", request_json]).await?;
         check_status(&resp)?;
         Ok(EvaluateResult {
@@ -79,7 +90,7 @@ impl SentryClient {
     }
 
     pub async fn policy_create(
-        &mut self,
+        &self,
         name: &str,
         policy_json: &str,
     ) -> Result<serde_json::Value, ClientError> {
@@ -90,7 +101,7 @@ impl SentryClient {
         Ok(resp)
     }
 
-    pub async fn policy_get(&mut self, name: &str) -> Result<PolicyInfo, ClientError> {
+    pub async fn policy_get(&self, name: &str) -> Result<PolicyInfo, ClientError> {
         let resp = self.command(&["POLICY", "GET", name]).await?;
         check_status(&resp)?;
         Ok(PolicyInfo {
@@ -108,7 +119,7 @@ impl SentryClient {
         })
     }
 
-    pub async fn policy_history(&mut self, name: &str) -> Result<Vec<PolicyInfo>, ClientError> {
+    pub async fn policy_history(&self, name: &str) -> Result<Vec<PolicyInfo>, ClientError> {
         let resp = self.command(&["POLICY", "HISTORY", name]).await?;
         check_status(&resp)?;
         resp["versions"]
@@ -133,7 +144,7 @@ impl SentryClient {
             .ok_or_else(|| ClientError::ResponseFormat("expected versions array".into()))
     }
 
-    pub async fn policy_list(&mut self) -> Result<Vec<String>, ClientError> {
+    pub async fn policy_list(&self) -> Result<Vec<String>, ClientError> {
         let resp = self.command(&["POLICY", "LIST"]).await?;
         check_status(&resp)?;
         resp["policies"]
@@ -146,13 +157,13 @@ impl SentryClient {
             .ok_or_else(|| ClientError::ResponseFormat("expected policies array".into()))
     }
 
-    pub async fn policy_delete(&mut self, name: &str) -> Result<(), ClientError> {
+    pub async fn policy_delete(&self, name: &str) -> Result<(), ClientError> {
         let resp = self.command(&["POLICY", "DELETE", name]).await?;
         check_status(&resp)
     }
 
     pub async fn policy_update(
-        &mut self,
+        &self,
         name: &str,
         policy_json: &str,
     ) -> Result<serde_json::Value, ClientError> {
@@ -163,11 +174,7 @@ impl SentryClient {
         Ok(resp)
     }
 
-    pub async fn key_rotate(
-        &mut self,
-        force: bool,
-        dryrun: bool,
-    ) -> Result<RotateResult, ClientError> {
+    pub async fn key_rotate(&self, force: bool, dryrun: bool) -> Result<RotateResult, ClientError> {
         let mut args = vec!["KEY", "ROTATE"];
         if force {
             args.push("FORCE");
@@ -184,24 +191,24 @@ impl SentryClient {
         })
     }
 
-    pub async fn key_info(&mut self) -> Result<serde_json::Value, ClientError> {
+    pub async fn key_info(&self) -> Result<serde_json::Value, ClientError> {
         let resp = self.command(&["KEY", "INFO"]).await?;
         check_status(&resp)?;
         Ok(resp)
     }
 
-    pub async fn jwks(&mut self) -> Result<serde_json::Value, ClientError> {
+    pub async fn jwks(&self) -> Result<serde_json::Value, ClientError> {
         let resp = self.command(&["JWKS"]).await?;
         check_status(&resp)?;
         Ok(resp)
     }
 
-    async fn command(&mut self, args: &[&str]) -> Result<serde_json::Value, ClientError> {
-        self.conn.send_command(args).await
+    async fn command(&self, args: &[&str]) -> Result<serde_json::Value, ClientError> {
+        self.conn.lock().await.send_command(args).await
     }
 
-    async fn meta_command(&mut self, args: &[&str]) -> Result<serde_json::Value, ClientError> {
-        self.conn.send_meta_command(args).await
+    async fn meta_command(&self, args: &[&str]) -> Result<serde_json::Value, ClientError> {
+        self.conn.lock().await.send_meta_command(args).await
     }
 }
 
@@ -218,4 +225,29 @@ fn check_status(resp: &serde_json::Value) -> Result<(), ClientError> {
     Err(ClientError::ResponseFormat(
         "unexpected response format".into(),
     ))
+}
+
+#[cfg(test)]
+mod surface_tests {
+    //! Pin the publicly-reachable API surface of the sentry client.
+
+    use super::SentryClient;
+    use shroudb_acl::PolicyEvaluator;
+    use std::sync::Arc;
+
+    #[test]
+    fn sentry_client_pub_type_reachable_from_crate_root() {
+        fn _accepts(_c: SentryClient) {}
+    }
+
+    #[test]
+    fn sentry_client_satisfies_policy_evaluator_as_trait_object() {
+        // Compile-only: pins the `policy_evaluator` module providing an
+        // impl of `PolicyEvaluator` for `SentryClient`, usable as a trait
+        // object.
+        fn _accepts_policy(_p: Arc<dyn PolicyEvaluator>) {}
+        fn _would_accept(c: SentryClient) {
+            _accepts_policy(Arc::new(c));
+        }
+    }
 }
