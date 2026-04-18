@@ -60,8 +60,11 @@ async fn main() -> anyhow::Result<()> {
                 shroudb_server_bootstrap::open_storage(&cfg.store.data_dir, key_source.as_ref())
                     .await
                     .context("failed to open storage engine")?;
-            let store = Arc::new(shroudb_storage::EmbeddedStore::new(storage, "sentry"));
-            run_server(cfg, store).await
+            let store = Arc::new(shroudb_storage::EmbeddedStore::new(
+                storage.clone(),
+                "sentry",
+            ));
+            run_server(cfg, store, Some(storage)).await
         }
         "remote" => {
             let uri = cfg
@@ -75,7 +78,7 @@ async fn main() -> anyhow::Result<()> {
                     .await
                     .context("failed to connect to remote store")?,
             );
-            run_server(cfg, store).await
+            run_server(cfg, store, None).await
         }
         other => anyhow::bail!("unknown store mode: {other}"),
     }
@@ -84,7 +87,23 @@ async fn main() -> anyhow::Result<()> {
 async fn run_server<S: Store + 'static>(
     cfg: SentryServerConfig,
     store: Arc<S>,
+    storage: Option<Arc<shroudb_storage::StorageEngine>>,
 ) -> anyhow::Result<()> {
+    // Resolve [audit] via engine-bootstrap — no silent None. Sentry has
+    // no [policy] section: Sentry IS the policy evaluator.
+    let audit_cfg = cfg.audit.clone().ok_or_else(|| {
+        anyhow::anyhow!(
+            "missing [audit] config section. Pick one:\n  \
+             [audit] mode = \"remote\" addr = \"chronicle.internal:7300\"\n  \
+             [audit] mode = \"embedded\"\n  \
+             [audit] mode = \"disabled\" justification = \"<reason>\""
+        )
+    })?;
+    let audit_cap = audit_cfg
+        .resolve(storage)
+        .await
+        .context("failed to resolve [audit] capability")?;
+
     // Parse signing algorithm
     let signing_algorithm: SigningAlgorithm = cfg
         .engine
@@ -101,7 +120,7 @@ async fn run_server<S: Store + 'static>(
         scheduler_interval_secs: cfg.engine.scheduler_interval_secs,
         require_audit: cfg.engine.require_audit,
     };
-    let engine = Arc::new(SentryEngine::new(store, sentry_config, None).await?);
+    let engine = Arc::new(SentryEngine::new(store, sentry_config, audit_cap).await?);
 
     // Seed policies from config
     for (name, seed) in &cfg.policies {
@@ -179,4 +198,15 @@ async fn run_server<S: Store + 'static>(
     let _ = tcp_handle.await;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    #[test]
+    fn cli_debug_asserts() {
+        Cli::command().debug_assert();
+    }
 }

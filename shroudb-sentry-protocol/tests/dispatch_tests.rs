@@ -3,6 +3,7 @@ use shroudb_sentry_engine::engine::{SentryConfig, SentryEngine};
 use shroudb_sentry_protocol::commands::{SentryCommand, parse_command};
 use shroudb_sentry_protocol::dispatch::dispatch;
 use shroudb_sentry_protocol::response::SentryResponse;
+use shroudb_server_bootstrap::Capability;
 use shroudb_storage::EmbeddedStore;
 
 async fn create_test_engine() -> SentryEngine<EmbeddedStore> {
@@ -14,7 +15,7 @@ async fn create_test_engine() -> SentryEngine<EmbeddedStore> {
             signing_algorithm: SigningAlgorithm::ES256,
             ..Default::default()
         },
-        None,
+        Capability::DisabledForTests,
     )
     .await
     .unwrap()

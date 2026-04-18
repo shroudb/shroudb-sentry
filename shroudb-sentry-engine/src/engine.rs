@@ -9,6 +9,7 @@ use shroudb_acl::{
 };
 use shroudb_chronicle_core::event::{Engine as AuditEngine, Event, EventResult};
 use shroudb_chronicle_core::ops::ChronicleOps;
+use shroudb_server_bootstrap::Capability;
 use shroudb_store::Store;
 
 use shroudb_sentry_core::decision::SignedDecision;
@@ -55,16 +56,20 @@ impl Default for SentryConfig {
 pub struct SentryEngine<S: Store> {
     policies: PolicyManager<S>,
     signing: SigningManager<S>,
-    chronicle: Option<Arc<dyn ChronicleOps>>,
+    chronicle: Capability<Arc<dyn ChronicleOps>>,
     require_audit: bool,
 }
 
 impl<S: Store> SentryEngine<S> {
     /// Create and initialize a new Sentry engine.
+    ///
+    /// The `chronicle` capability is explicit: `Capability::Enabled(...)`,
+    /// `Capability::DisabledForTests`, or `Capability::DisabledWithJustification`.
+    /// Absence is never silent.
     pub async fn new(
         store: Arc<S>,
         config: SentryConfig,
-        chronicle: Option<Arc<dyn ChronicleOps>>,
+        chronicle: Capability<Arc<dyn ChronicleOps>>,
     ) -> Result<Self, SentryError> {
         let policies = PolicyManager::new(store.clone());
         let signing = SigningManager::new(store);
@@ -102,7 +107,7 @@ impl<S: Store> SentryEngine<S> {
         actor: Option<&str>,
         start: Instant,
     ) -> Result<(), SentryError> {
-        let Some(chronicle) = &self.chronicle else {
+        let Some(chronicle) = self.chronicle.as_ref() else {
             return Ok(());
         };
         let mut event = Event::new(
@@ -261,7 +266,7 @@ impl<S: Store> SentryEngine<S> {
         let keyring = self.signing.get("default")?;
         let signed = evaluator::sign_decision(&decision, request, &keyring)?;
 
-        if let Some(chronicle) = self.chronicle.clone() {
+        if let Some(chronicle) = self.chronicle.as_ref().cloned() {
             let resource = request.resource.id.clone();
             let actor = request.principal.id.clone();
             let duration_ms = start.elapsed().as_millis() as u64;
@@ -387,7 +392,7 @@ mod tests {
 
     async fn setup() -> SentryEngine<shroudb_storage::EmbeddedStore> {
         let store = shroudb_storage::test_util::create_test_store("sentry-test").await;
-        SentryEngine::new(store, SentryConfig::default(), None)
+        SentryEngine::new(store, SentryConfig::default(), Capability::DisabledForTests)
             .await
             .unwrap()
     }
@@ -504,9 +509,10 @@ mod tests {
         // SentryEngine::new calls policies.init() which should skip the corrupt
         // entry with a warning rather than panic. The engine should initialize
         // successfully with zero policies loaded.
-        let engine = SentryEngine::new(store, SentryConfig::default(), None)
-            .await
-            .unwrap();
+        let engine =
+            SentryEngine::new(store, SentryConfig::default(), Capability::DisabledForTests)
+                .await
+                .unwrap();
 
         // The corrupt entry should have been skipped, not loaded
         assert_eq!(engine.policy_count(), 0, "corrupt policy should be skipped");

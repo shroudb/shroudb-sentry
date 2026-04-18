@@ -10,9 +10,11 @@ publish.workspace = true
 [dependencies]
 shroudb-sentry-core.workspace = true
 shroudb-acl.workspace = true
+shroudb-audit.workspace = true
 shroudb-chronicle-core.workspace = true
 shroudb-store.workspace = true
 shroudb-crypto.workspace = true
+shroudb-server-bootstrap.workspace = true
 
 tokio.workspace = true
 serde.workspace = true

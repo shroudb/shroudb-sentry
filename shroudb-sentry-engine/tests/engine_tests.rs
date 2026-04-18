@@ -1,5 +1,6 @@
 use shroudb_sentry_core::signing::SigningAlgorithm;
 use shroudb_sentry_engine::engine::{SentryConfig, SentryEngine};
+use shroudb_server_bootstrap::Capability;
 use shroudb_storage::EmbeddedStore;
 
 async fn create_test_engine() -> SentryEngine<EmbeddedStore> {
@@ -14,7 +15,9 @@ async fn create_test_engine() -> SentryEngine<EmbeddedStore> {
         require_audit: false,
     };
 
-    SentryEngine::new(store, sentry_config, None).await.unwrap()
+    SentryEngine::new(store, sentry_config, Capability::DisabledForTests)
+        .await
+        .unwrap()
 }
 
 // ── PolicyManager via Engine ────────────────────────────────────────
@@ -552,7 +555,9 @@ async fn engine_require_audit_no_chronicle_fails() {
     };
 
     // No Chronicle configured
-    let engine = SentryEngine::new(store, config, None).await.unwrap();
+    let engine = SentryEngine::new(store, config, Capability::DisabledForTests)
+        .await
+        .unwrap();
 
     // Create a policy so evaluation has something to work with
     let policy = shroudb_sentry_core::policy::Policy {

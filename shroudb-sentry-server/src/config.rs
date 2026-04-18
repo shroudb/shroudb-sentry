@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 use shroudb_acl::ServerAuthConfig;
+use shroudb_engine_bootstrap::AuditConfig;
 
 #[derive(Debug, Deserialize)]
 pub struct SentryServerConfig {
@@ -17,6 +18,10 @@ pub struct SentryServerConfig {
     pub auth: ServerAuthConfig,
     #[serde(default)]
     pub policies: HashMap<String, PolicySeedConfig>,
+    /// Audit (Chronicle) capability slot. Absent = fail-closed at startup.
+    /// Sentry has no [policy] section — it IS the policy evaluator.
+    #[serde(default)]
+    pub audit: Option<AuditConfig>,
 }
 
 #[derive(Debug, Deserialize)]

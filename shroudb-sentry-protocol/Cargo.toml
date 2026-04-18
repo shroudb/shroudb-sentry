@@ -20,4 +20,5 @@ serde_json.workspace = true
 [dev-dependencies]
 tokio = { version = "1", features = ["full", "test-util"] }
 shroudb-storage = { workspace = true, features = ["testing"] }
+shroudb-server-bootstrap = { workspace = true }
 base64.workspace = true
