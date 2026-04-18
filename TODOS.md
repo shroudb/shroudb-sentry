@@ -17,7 +17,7 @@ Rules:
 
 ### Open
 
-- [ ] **DEBT-1** — `policy_create` must rollback on audit failure (currently half-committed). Test: `debt_1_policy_create_must_rollback_when_audit_fails` @ `shroudb-sentry-engine/tests/debt_tests_test.rs`.
+- [x] **DEBT-1** — `policy_create` must rollback on audit failure (currently half-committed). Test: `debt_1_policy_create_must_rollback_when_audit_fails` @ `shroudb-sentry-engine/tests/debt_tests_test.rs`.
 - [ ] **DEBT-2** — `policy_delete` must rollback on audit failure. Test: `debt_2_policy_delete_must_rollback_when_audit_fails` @ same file.
 - [ ] **DEBT-3** — `SentryConfig::default().require_audit` must be `true`. Test: `debt_3_sentry_config_default_require_audit_must_be_true` @ same file.
 - [ ] **DEBT-4** — EVALUATE must fail-closed on audit error by default (currently fire-and-forget `tokio::spawn` with dropped JoinHandle). Test: `debt_4_evaluate_default_must_fail_closed_on_audit_error` @ same file.

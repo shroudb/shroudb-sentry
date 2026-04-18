@@ -179,13 +179,31 @@ impl<S: Store> SentryEngine<S> {
     // --- Policy operations ---
 
     /// Create a new policy.
+    ///
+    /// Audit is a gate, not a footnote. If Chronicle is configured and the
+    /// audit event cannot be recorded, the newly-created policy is rolled
+    /// back (deleted from store and cache) before the error is returned so
+    /// no mutation lands without a matching audit record.
     pub async fn policy_create(&self, policy: Policy, actor: &str) -> Result<Policy, SentryError> {
         let start = Instant::now();
         let name = policy.name.clone();
         self.authorize_policy_mutation(&name, "create", actor)?;
         let result = self.policies.create(policy).await?;
-        self.emit_audit_event("POLICY_CREATE", &name, EventResult::Ok, Some(actor), start)
-            .await?;
+        if let Err(audit_err) = self
+            .emit_audit_event("POLICY_CREATE", &name, EventResult::Ok, Some(actor), start)
+            .await
+        {
+            // Compensating rollback: audit failed, so the mutation must not
+            // remain durable. If the rollback itself fails we surface that
+            // too — a half-committed state is the worst outcome.
+            if let Err(rollback_err) = self.policies.delete(&name).await {
+                return Err(SentryError::Internal(format!(
+                    "audit failed ({audit_err}) and rollback of policy \
+                     '{name}' also failed ({rollback_err})"
+                )));
+            }
+            return Err(audit_err);
+        }
         Ok(result)
     }
 
