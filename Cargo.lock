@@ -1411,7 +1411,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-cli"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "anyhow",
  "clap",
@@ -1422,7 +1422,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-client"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "serde_json",
  "shroudb-acl",
@@ -1433,7 +1433,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-core"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "serde",
  "serde_json",
@@ -1444,7 +1444,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-engine"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "base64",
  "dashmap",
@@ -1465,7 +1465,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-protocol"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "base64",
  "serde",
@@ -1481,7 +1481,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-server"
-version = "1.5.0"
+version = "1.5.1"
 dependencies = [
  "anyhow",
  "base64",
