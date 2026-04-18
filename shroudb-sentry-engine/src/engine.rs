@@ -218,12 +218,33 @@ impl<S: Store> SentryEngine<S> {
     }
 
     /// Delete a policy.
+    ///
+    /// Audit is a gate, not a footnote. If Chronicle is configured and the
+    /// audit event cannot be recorded, the deleted policy is restored
+    /// before the error is returned so no mutation lands without a
+    /// matching audit record.
     pub async fn policy_delete(&self, name: &str, actor: &str) -> Result<(), SentryError> {
         let start = Instant::now();
         self.authorize_policy_mutation(name, "delete", actor)?;
+        // Snapshot the policy before deletion so we can restore it if the
+        // audit event fails to record.
+        let snapshot = self.policies.get(name)?;
         self.policies.delete(name).await?;
-        self.emit_audit_event("POLICY_DELETE", name, EventResult::Ok, Some(actor), start)
-            .await?;
+        if let Err(audit_err) = self
+            .emit_audit_event("POLICY_DELETE", name, EventResult::Ok, Some(actor), start)
+            .await
+        {
+            // Compensating restore. `restore_version` preserves the
+            // pre-delete version so history stays consistent; if the
+            // restore itself fails, surface the full story.
+            if let Err(restore_err) = self.policies.restore_version(snapshot).await {
+                return Err(SentryError::Internal(format!(
+                    "audit failed ({audit_err}) and restore of policy \
+                     '{name}' also failed ({restore_err})"
+                )));
+            }
+            return Err(audit_err);
+        }
         Ok(())
     }
 

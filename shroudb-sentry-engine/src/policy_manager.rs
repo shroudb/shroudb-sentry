@@ -172,6 +172,17 @@ impl<S: Store> PolicyManager<S> {
         self.cache.len()
     }
 
+    /// Restore a previously-deleted policy exactly as it was, preserving
+    /// version and timestamps. Used as a compensating action when a
+    /// mutation is rolled back because its audit record failed.
+    pub async fn restore_version(&self, policy: Policy) -> Result<(), SentryError> {
+        validate_policy_name(&policy.name)?;
+        self.save(&policy).await?;
+        self.cache.insert(policy.name.clone(), policy);
+        self.invalidate_sorted();
+        Ok(())
+    }
+
     /// Seed a policy if it doesn't already exist.
     pub async fn seed_if_absent(&self, policy: Policy) -> Result<(), SentryError> {
         if self.cache.contains_key(&policy.name) {
