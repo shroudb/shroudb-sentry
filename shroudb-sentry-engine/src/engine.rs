@@ -309,42 +309,33 @@ impl<S: Store> SentryEngine<S> {
         let keyring = self.signing.get("default")?;
         let signed = evaluator::sign_decision(&decision, request, &keyring)?;
 
-        if let Some(chronicle) = self.chronicle.as_ref().cloned() {
+        if let Some(chronicle) = self.chronicle.as_ref() {
             let resource = request.resource.id.clone();
             let actor = request.principal.id.clone();
             let duration_ms = start.elapsed().as_millis() as u64;
 
-            if self.require_audit {
-                // Synchronous audit — fail the evaluation if recording fails
-                let mut event = Event::new(
-                    AuditEngine::Sentry,
-                    "EVALUATE".to_string(),
-                    "resource".to_string(),
-                    resource,
-                    EventResult::Ok,
-                    actor,
-                );
-                event.duration_ms = duration_ms;
-                chronicle
-                    .record(event)
-                    .await
-                    .map_err(|e| SentryError::Internal(format!("required audit failed: {e}")))?;
-            } else {
-                // Fire-and-forget audit
-                tokio::spawn(async move {
-                    let mut event = Event::new(
-                        AuditEngine::Sentry,
-                        "EVALUATE".to_string(),
-                        "resource".to_string(),
-                        resource.clone(),
-                        EventResult::Ok,
-                        actor,
-                    );
-                    event.duration_ms = duration_ms;
-                    if let Err(e) = chronicle.record(event).await {
-                        tracing::warn!(resource, error = %e, "failed to emit audit event");
-                    }
-                });
+            // Record synchronously in-task. The previous fire-and-forget
+            // `tokio::spawn` dropped the JoinHandle, so the task could be
+            // cancelled on runtime shutdown and its error was unobservable
+            // to the caller. Recording in-task means `require_audit` is the
+            // only knob: on failure we either surface the error (fail-closed)
+            // or log and continue, but the audit attempt is always awaited.
+            let mut event = Event::new(
+                AuditEngine::Sentry,
+                "EVALUATE".to_string(),
+                "resource".to_string(),
+                resource.clone(),
+                EventResult::Ok,
+                actor,
+            );
+            event.duration_ms = duration_ms;
+            if let Err(e) = chronicle.record(event).await {
+                if self.require_audit {
+                    return Err(SentryError::Internal(format!(
+                        "required audit failed: {e}"
+                    )));
+                }
+                tracing::warn!(resource, error = %e, "failed to emit audit event");
             }
         } else if self.require_audit {
             return Err(SentryError::Internal(
