@@ -63,10 +63,3 @@ thiserror = "2"
 hex = "0.4"
 base64 = "0.22"
 dashmap = "6"
-
-# Temporary path patch: shroudb-engine-bootstrap 0.3.0 is committed upstream
-# but not yet published to the shroudb registry. Point at the local path so
-# sentry can pick up the embedded-default behavior change for [audit].
-# Remove once 0.3.0 is published.
-[patch.shroudb]
-shroudb-engine-bootstrap = { path = "../commons/shroudb-engine-bootstrap" }
