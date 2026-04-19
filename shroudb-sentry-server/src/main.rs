@@ -89,16 +89,11 @@ async fn run_server<S: Store + 'static>(
     store: Arc<S>,
     storage: Option<Arc<shroudb_storage::StorageEngine>>,
 ) -> anyhow::Result<()> {
-    // Resolve [audit] via engine-bootstrap — no silent None. Sentry has
-    // no [policy] section: Sentry IS the policy evaluator.
-    let audit_cfg = cfg.audit.clone().ok_or_else(|| {
-        anyhow::anyhow!(
-            "missing [audit] config section. Pick one:\n  \
-             [audit] mode = \"remote\" addr = \"chronicle.internal:7300\"\n  \
-             [audit] mode = \"embedded\"\n  \
-             [audit] mode = \"disabled\" justification = \"<reason>\""
-        )
-    })?;
+    // Resolve [audit] via engine-bootstrap. An omitted [audit] section
+    // defaults to embedded Chronicle on the shared storage (engine-bootstrap
+    // 0.3.0 behavior). Sentry has no [policy] section: Sentry IS the policy
+    // evaluator. Embedded init failures still surface as startup errors.
+    let audit_cfg = cfg.audit.clone().unwrap_or_default();
     let audit_cap = audit_cfg
         .resolve(storage)
         .await

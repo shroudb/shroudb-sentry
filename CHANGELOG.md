@@ -4,6 +4,17 @@ All notable changes to ShrouDB Sentry are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [v1.7.0] - 2026-04-18
+
+### Changed
+
+- Default `[audit]` to embedded Chronicle on the shared storage when the
+  section is omitted. Operators who want remote Chronicle or an explicit
+  disabled opt-out must still set `[audit]` explicitly. Previously, a
+  missing `[audit]` section failed startup with an explicit error.
+- Bump `shroudb-engine-bootstrap` pin to 0.3.0 (carries the embedded-default
+  behavior change).
+
 ## [v1.4.11] - 2026-04-09
 
 ### Added

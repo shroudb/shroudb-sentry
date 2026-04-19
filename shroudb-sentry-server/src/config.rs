@@ -18,8 +18,11 @@ pub struct SentryServerConfig {
     pub auth: ServerAuthConfig,
     #[serde(default)]
     pub policies: HashMap<String, PolicySeedConfig>,
-    /// Audit (Chronicle) capability slot. Absent = fail-closed at startup.
-    /// Sentry has no [policy] section — it IS the policy evaluator.
+    /// Audit (Chronicle) capability slot. Absent = default to embedded
+    /// Chronicle on the shared storage (engine-bootstrap 0.3.0+ default).
+    /// Operators who want remote Chronicle or an explicit disabled opt-out
+    /// must set `[audit]` explicitly. Sentry has no [policy] section —
+    /// it IS the policy evaluator.
     #[serde(default)]
     pub audit: Option<AuditConfig>,
 }

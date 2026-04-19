@@ -125,10 +125,10 @@ fn free_port() -> u16 {
 }
 
 fn generate_config(tcp_bind: &str, config: &TestServerConfig) -> String {
-    // [audit] is mandatory in server startup since the Capability<T>
-    // migration — the process bails if it is absent. Tests use the
-    // explicit disabled-with-justification variant so they do not
-    // require a running Chronicle to exercise sentry behavior.
+    // Tests set [audit] to the explicit disabled-with-justification variant
+    // so they do not require a running Chronicle to exercise sentry behavior.
+    // (Omitting [audit] would default to embedded Chronicle per
+    // engine-bootstrap 0.3.0, which is not what these tests want.)
     let mut toml = format!(
         "[server]\ntcp_bind = \"{tcp_bind}\"\n\n[store]\nmode = \"embedded\"\n\n\
          [audit]\nmode = \"disabled\"\njustification = \"test harness\"\n"

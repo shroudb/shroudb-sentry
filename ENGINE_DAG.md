@@ -207,14 +207,17 @@ The server also starts the background scheduler
 (`start_scheduler`) for auto-rotation / auto-retirement, seeds
 policies from `[policies.*]` config, wires the ACL token validator,
 and prints a startup banner via `shroudb-server-bootstrap`.
-Chronicle is resolved at this layer from a mandatory `[audit]`
-config section (one of `mode = "remote"`, `mode = "embedded"`, or
-`mode = "disabled"` with a `justification`); the server calls
+Chronicle is resolved at this layer from the `[audit]` config section
+(one of `mode = "remote"`, `mode = "embedded"`, or `mode = "disabled"`
+with a `justification`); the server calls
 `audit_cfg.resolve(storage).await` via `shroudb-engine-bootstrap` and
 passes the resulting `Capability<Arc<dyn ChronicleOps>>` into
-`SentryEngine::new`. There is no silent `None` — if `[audit]` is
-missing, startup fails with an explicit error listing the three
-accepted shapes.
+`SentryEngine::new`. There is still no silent `None`: when `[audit]`
+is omitted, engine-bootstrap 0.3.0 defaults to an embedded Chronicle
+on the shared storage rather than failing closed at startup.
+Embedded-init failures (e.g. storage unavailable) continue to surface
+as startup errors. Operators who want remote Chronicle or an explicit
+disabled opt-out must still set `[audit]` explicitly.
 
 **Embedded (in-process, via Moat or a host service).**
 A host crate constructs `SentryEngine<S>` directly with its own
