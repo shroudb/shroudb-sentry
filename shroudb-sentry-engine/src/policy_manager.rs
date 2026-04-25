@@ -156,7 +156,7 @@ impl<S: Store> PolicyManager<S> {
 
         // Slow path: recompute and cache
         let mut policies: Vec<Policy> = self.cache.iter().map(|r| r.value().clone()).collect();
-        policies.sort_by(|a, b| b.priority.cmp(&a.priority));
+        policies.sort_by_key(|p| std::cmp::Reverse(p.priority));
         let sorted = Arc::new(policies);
 
         let mut guard = self.sorted.write().unwrap();

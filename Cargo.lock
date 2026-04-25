@@ -1198,9 +1198,9 @@ dependencies = [
 
 [[package]]
 name = "rustls-webpki"
-version = "0.103.12"
+version = "0.103.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8279bb85272c9f10811ae6a6c547ff594d6a7f3c6c6b02ee9726d1d0dcfcdd06"
+checksum = "61c429a8649f110dddef65e2a5ad240f747e85f7758a6bccc7e5777bd33f756e"
 dependencies = [
  "aws-lc-rs",
  "ring",
@@ -1481,9 +1481,9 @@ dependencies = [
 
 [[package]]
 name = "shroudb-engine-bootstrap"
-version = "0.3.0"
+version = "0.4.0"
 source = "sparse+https://crates.shroudb.dev/api/v1/crates/"
-checksum = "a656c38198c1c33b434e013796b6977019ac899f91e4880239cf5b04ef14c743"
+checksum = "1c4d7429cf41676311ca049a33ad71b42e197fa6cab07c453875fad6b65772ce"
 dependencies = [
  "anyhow",
  "serde",
@@ -1513,12 +1513,12 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-cli"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "anyhow",
  "clap",
  "serde_json",
- "shroudb-sentry-client 1.7.0",
+ "shroudb-sentry-client 1.8.0",
  "tokio",
 ]
 
@@ -1537,7 +1537,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-client"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "serde_json",
  "shroudb-acl",
@@ -1560,7 +1560,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-core"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -1595,7 +1595,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-engine"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "base64",
  "dashmap",
@@ -1606,7 +1606,7 @@ dependencies = [
  "shroudb-audit",
  "shroudb-chronicle-core",
  "shroudb-crypto",
- "shroudb-sentry-core 1.7.0",
+ "shroudb-sentry-core 1.8.0",
  "shroudb-server-bootstrap",
  "shroudb-storage",
  "shroudb-store",
@@ -1618,15 +1618,15 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-protocol"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "base64",
  "serde",
  "serde_json",
  "shroudb-acl",
  "shroudb-protocol-wire",
- "shroudb-sentry-core 1.7.0",
- "shroudb-sentry-engine 1.7.0",
+ "shroudb-sentry-core 1.8.0",
+ "shroudb-sentry-engine 1.8.0",
  "shroudb-server-bootstrap",
  "shroudb-storage",
  "shroudb-store",
@@ -1635,7 +1635,7 @@ dependencies = [
 
 [[package]]
 name = "shroudb-sentry-server"
-version = "1.7.0"
+version = "1.8.0"
 dependencies = [
  "anyhow",
  "base64",
@@ -1646,9 +1646,9 @@ dependencies = [
  "shroudb-client",
  "shroudb-engine-bootstrap",
  "shroudb-protocol-wire",
- "shroudb-sentry-client 1.7.0",
- "shroudb-sentry-core 1.7.0",
- "shroudb-sentry-engine 1.7.0",
+ "shroudb-sentry-client 1.8.0",
+ "shroudb-sentry-core 1.8.0",
+ "shroudb-sentry-engine 1.8.0",
  "shroudb-sentry-protocol",
  "shroudb-server-bootstrap",
  "shroudb-server-tcp",
